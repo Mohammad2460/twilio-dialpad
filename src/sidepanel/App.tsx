@@ -1,0 +1,73 @@
+import { useCallStore } from './stores/call-store';
+import { useDevice } from './hooks/use-device';
+import { StatusBar } from './components/StatusBar';
+import { Dialpad } from './components/Dialpad';
+import { CallScreen } from './components/CallScreen';
+import { IncomingCall } from './components/IncomingCall';
+import { CallHistory } from './components/CallHistory';
+import { NotConfigured } from './components/NotConfigured';
+import { FolderPermissionBanner } from './components/FolderPermissionBanner';
+
+export function App() {
+  useDevice();
+  const settings = useCallStore((s) => s.settings);
+  const activeCall = useCallStore((s) => s.activeCall);
+  const view = useCallStore((s) => s.view);
+
+  if (!settings) return <NotConfigured />;
+
+  return (
+    <div className="flex h-full flex-col bg-white">
+      <StatusBar />
+      <FolderPermissionBanner />
+      <main className="flex-1 overflow-y-auto">
+        {activeCall?.phase === 'ringing' && activeCall.direction === 'in' ? (
+          <IncomingCall />
+        ) : activeCall ? (
+          <CallScreen />
+        ) : view === 'history' ? (
+          <CallHistory />
+        ) : (
+          <Dialpad />
+        )}
+      </main>
+      <Footer />
+    </div>
+  );
+}
+
+function Footer() {
+  const view = useCallStore((s) => s.view);
+  const setView = useCallStore((s) => s.setView);
+  const activeCall = useCallStore((s) => s.activeCall);
+  if (activeCall) return null;
+  return (
+    <nav className="flex border-t border-gray-200 bg-white">
+      <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>Keypad</TabButton>
+      <TabButton active={view === 'history'} onClick={() => setView('history')}>Recents</TabButton>
+    </nav>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'flex-1 py-3 text-sm font-medium',
+        active ? 'text-brand-600 border-t-2 border-brand-600 -mt-px' : 'text-gray-500 hover:text-gray-900',
+      ].join(' ')}
+    >
+      {children}
+    </button>
+  );
+}

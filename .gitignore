@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.vite/
+*.log
+.env
+.env.local
+.DS_Store
+playwright-report/
+test-results/
+coverage/
+.commandcode/
+.claude/
+*.zip
+twilio-dialpad-share*/

@@ -1,0 +1,42 @@
+<evaluation>
+  <qa_pair>
+    <question>How many missed inbound calls are in the dataset?</question>
+    <answer>1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the call SID of the call that mentioned the word "pricing"?</question>
+    <answer>CA1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the duration in seconds of the longest completed call?</question>
+    <answer>180</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What direction is call CA1 — inbound or outbound?</question>
+    <answer>outbound</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What price was quoted in the conversation about pricing?</question>
+    <answer>twenty dollars</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the E.164 phone number of the missed call?</question>
+    <answer>+14155552222</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many total calls are recorded in the index file?</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many transcript segments are stored for call CA1?</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What is the timestamp (in milliseconds since epoch) of the first segment in call CA1?</question>
+    <answer>1000</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many segments in call CA1 were spoken by the user (not the remote caller)?</question>
+    <answer>1</answer>
+  </qa_pair>
+</evaluation>
