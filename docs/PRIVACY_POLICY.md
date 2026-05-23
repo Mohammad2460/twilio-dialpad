@@ -77,4 +77,4 @@ If material changes are made, the extension version will be updated and the "Las
 
 ## Contact
 
-Questions? Open an issue at: **[your GitHub repo URL here]**
+Questions? Open an issue at: **https://github.com/Mohammad2460/twilio-dialpad/issues**
