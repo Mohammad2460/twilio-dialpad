@@ -8,6 +8,7 @@ import { useCallStore } from '../stores/call-store';
 import { storage } from '@shared/storage';
 import { findContactByPhone } from '@shared/hubspot';
 import { transcripts, buildTranscript, prefs } from '@shared/transcripts';
+import { ensureCloudAccount, syncCallToCloud } from '@shared/cloud';
 import type { CallRecord, Transcript } from '@shared/types';
 
 // Module-level singleton — persists across React re-renders and side-panel re-mounts.
@@ -229,7 +230,12 @@ async function persistEndedCall(
     console.error('[history] storage.pushHistory failed', e);
   }
 
-  // 3. JSON sync-folder write (only if user configured a folder)
+  // 3. Cloud sync — fire-and-forget, never blocks call flow
+  ensureCloudAccount()
+    .then(({ userId }) => syncCallToCloud(userId, record, transcript))
+    .catch(() => {});
+
+  // 4. JSON sync-folder write (only if user configured a folder)
   if (transcript) {
     await writeTranscriptToSyncFolder(transcript, record).catch((e) =>
       console.warn('[sync-folder] write failed', e),

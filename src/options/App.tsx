@@ -7,6 +7,7 @@ import { pushConfig } from '@shared/twilio-env';
 import { normalizeE164 } from '@shared/phone';
 import { testDeepgramKey } from '@shared/deepgram';
 import { prefs } from '@shared/transcripts';
+import { ensureCloudAccount } from '@shared/cloud';
 
 export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -32,6 +33,9 @@ export function App() {
 
         {/* Microphone permission — must be granted from a full tab, not side panel */}
         <MicPermissionCard />
+
+        {/* Claude AI connector — zero-config for non-technical users */}
+        <ClaudeConnectorCard />
 
         <div className="rounded-lg border border-gray-200 bg-white p-5 shadow-sm">
           <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -664,6 +668,89 @@ function MicPermissionCard() {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────
+// Claude Connector Card — zero-config MCP URL for Claude.ai
+// ──────────────────────────────────────────────────────────────
+
+function ClaudeConnectorCard() {
+  const [mcpUrl, setMcpUrl] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    ensureCloudAccount()
+      .then(({ mcpUrl }) => setMcpUrl(mcpUrl))
+      .catch(() => {/* server unreachable — show retry UI */})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleCopy() {
+    if (!mcpUrl) return;
+    try {
+      await navigator.clipboard.writeText(mcpUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Fallback: select text
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="text-2xl">🔗</span>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-base font-semibold text-blue-900">Connect to Claude AI</h2>
+          <p className="mt-1 text-sm text-blue-700">
+            Paste your personal URL in{' '}
+            <a
+              href="https://claude.ai"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              Claude.ai
+            </a>{' '}
+            → Settings → Integrations → Add MCP Server. Claude will be able to read
+            your call transcripts and answer questions about them.
+          </p>
+
+          {loading && (
+            <p className="mt-3 text-sm text-blue-600 animate-pulse">Setting up your connector…</p>
+          )}
+
+          {!loading && !mcpUrl && (
+            <p className="mt-3 text-sm text-red-600">
+              Could not reach cloud server. Check your connection and reload this page.
+            </p>
+          )}
+
+          {mcpUrl && (
+            <div className="mt-3 flex items-center gap-2">
+              <code className="flex-1 rounded bg-blue-100 px-3 py-2 text-xs font-mono text-blue-900 break-all select-all">
+                {mcpUrl}
+              </code>
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="shrink-0 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+              >
+                {copied ? '✓ Copied' : 'Copy'}
+              </button>
+            </div>
+          )}
+
+          {mcpUrl && (
+            <p className="mt-2 text-xs text-blue-600">
+              This URL is your private key — keep it to yourself.
+            </p>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

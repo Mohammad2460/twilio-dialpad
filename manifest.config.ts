@@ -19,6 +19,7 @@ export default defineManifest({
     'https://app.hubspot.com/*',
     'https://api.deepgram.com/*',
     'wss://api.deepgram.com/*',
+    'https://dialler-mcp.vercel.app/*',
   ],
   background: {
     service_worker: 'src/background/service-worker.ts',
