@@ -56,6 +56,25 @@ export interface Transcript {
   createdAt: number;
 }
 
+// ── Auto-dialer ──────────────────────────────────────────────────
+
+export type DialerItemStatus = 'pending' | 'calling' | 'done' | 'skipped' | 'failed';
+export type DialerOutcome = 'interested' | 'callback' | 'no_answer' | 'do_not_call';
+
+export interface DialerQueueItem {
+  id: string;
+  /** E.164 number. */
+  number: string;
+  /** Optional label parsed from paste (e.g. "Jane Doe"). */
+  label?: string;
+  status: DialerItemStatus;
+  outcome?: DialerOutcome;
+  /** CallSid linked once the call ends. */
+  callSid?: string;
+  /** ms when call finished — used to surface "last called" hint. */
+  endedAt?: number;
+}
+
 export interface Settings {
   accountSid: string;
   apiKeySid: string;

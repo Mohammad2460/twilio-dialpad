@@ -7,7 +7,7 @@ import { pushConfig } from '@shared/twilio-env';
 import { normalizeE164 } from '@shared/phone';
 import { testDeepgramKey } from '@shared/deepgram';
 import { prefs } from '@shared/transcripts';
-import { ensureCloudAccount } from '@shared/cloud';
+import { ensureCloudAccount, getSubscription, getCheckoutUrl, cancelSubscription, type Subscription } from '@shared/cloud';
 
 export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -77,6 +77,23 @@ export function App() {
             className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
           >
             Reset
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              const ok = confirm(
+                'Sign out of this device?\n\n' +
+                  'Twilio credentials, call history, caller IDs, and cloud sync binding will be cleared from this browser.\n\n' +
+                  'Transcripts saved locally remain intact.\n' +
+                  'Your cloud subscription is NOT cancelled — manage that under Pro plan.',
+              );
+              if (!ok) return;
+              await storage.signOut();
+              setSettings(null);
+            }}
+            className="ml-auto rounded-md border border-red-200 bg-white px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+          >
+            Sign out
           </button>
         </div>
       </div>
@@ -678,14 +695,35 @@ function MicPermissionCard() {
 
 function ClaudeConnectorCard() {
   const [mcpUrl, setMcpUrl] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [sub, setSub] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutErr, setCheckoutErr] = useState<string | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [cancelErr, setCancelErr] = useState<string | null>(null);
 
   useEffect(() => {
-    ensureCloudAccount()
-      .then(({ mcpUrl }) => setMcpUrl(mcpUrl))
-      .catch(() => {/* server unreachable — show retry UI */})
-      .finally(() => setLoading(false));
+    let mounted = true;
+    (async () => {
+      try {
+        const { userId, mcpUrl } = await ensureCloudAccount();
+        if (!mounted) return;
+        setUserId(userId);
+        setMcpUrl(mcpUrl);
+        const s = await getSubscription(userId);
+        if (!mounted) return;
+        setSub(s);
+      } catch {
+        /* server unreachable */
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   async function handleCopy() {
@@ -695,58 +733,165 @@ function ClaudeConnectorCard() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback: select text
+      /* noop */
     }
   }
 
+  async function handleUpgrade() {
+    if (!userId) return;
+    setCheckoutErr(null);
+    setCheckoutLoading(true);
+    try {
+      const url = await getCheckoutUrl(userId);
+      await chrome.tabs.create({ url, active: true });
+    } catch (e) {
+      setCheckoutErr(e instanceof Error ? e.message : 'Could not start checkout');
+    } finally {
+      setCheckoutLoading(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!userId) return;
+    const endDate = sub?.currentPeriodEnd
+      ? new Date(sub.currentPeriodEnd).toLocaleDateString()
+      : 'the end of your billing period';
+    if (!confirm(
+      `Cancel your subscription? You'll keep cloud sync + Claude MCP access until ${endDate}, then they'll pause. You can re-subscribe any time.`
+    )) return;
+    setCancelErr(null);
+    setCancelLoading(true);
+    try {
+      const result = await cancelSubscription(userId);
+      if (!result.ok) {
+        setCancelErr(result.error ?? 'Could not cancel');
+        return;
+      }
+      // Re-fetch subscription to reflect new state.
+      const s = await getSubscription(userId);
+      setSub(s);
+    } catch (e) {
+      setCancelErr(e instanceof Error ? e.message : 'Network error');
+    } finally {
+      setCancelLoading(false);
+    }
+  }
+
+  // ── derived state ────────────────────────────────────────────
+  const status = sub?.status;
+  const hasAccess = sub?.hasAccess ?? false;
+  const daysLeft = sub?.daysLeft;
+  const periodEnd = sub?.currentPeriodEnd
+    ? new Date(sub.currentPeriodEnd).toLocaleDateString()
+    : null;
+
+  // Card color depends on access state.
+  const tone = !sub
+    ? { border: 'border-blue-200', bg: 'bg-blue-50', title: 'text-blue-900', body: 'text-blue-700', accent: 'bg-blue-100', code: 'text-blue-900', btn: 'bg-blue-600 hover:bg-blue-700' }
+    : !hasAccess
+      ? { border: 'border-amber-200', bg: 'bg-amber-50', title: 'text-amber-900', body: 'text-amber-800', accent: 'bg-amber-100', code: 'text-amber-900', btn: 'bg-amber-600 hover:bg-amber-700' }
+      : { border: 'border-emerald-200', bg: 'bg-emerald-50', title: 'text-emerald-900', body: 'text-emerald-800', accent: 'bg-emerald-100', code: 'text-emerald-900', btn: 'bg-emerald-600 hover:bg-emerald-700' };
+
   return (
-    <div className="rounded-lg border border-blue-200 bg-blue-50 p-5 shadow-sm">
+    <div className={`rounded-lg border ${tone.border} ${tone.bg} p-5 shadow-sm`}>
       <div className="flex items-start gap-3">
-        <span className="text-2xl">🔗</span>
+        <span className="text-2xl">{!sub ? '🔗' : !hasAccess ? '⚠️' : '✓'}</span>
         <div className="flex-1 min-w-0">
-          <h2 className="text-base font-semibold text-blue-900">Connect to Claude AI</h2>
-          <p className="mt-1 text-sm text-blue-700">
-            Paste your personal URL in{' '}
-            <a
-              href="https://claude.ai"
-              target="_blank"
-              rel="noreferrer"
-              className="underline"
-            >
-              Claude.ai
-            </a>{' '}
-            → Settings → Integrations → Add MCP Server. Claude will be able to read
-            your call transcripts and answer questions about them.
+          {/* ── HEADER LINE ────────────────────────────── */}
+          <h2 className={`text-base font-semibold ${tone.title}`}>
+            {!sub && 'Connect to Claude AI'}
+            {sub && status === 'trialing' && `Pro trial — ${daysLeft ?? 0} day${daysLeft === 1 ? '' : 's'} left`}
+            {sub && status === 'active' && 'Pro plan active'}
+            {sub && status === 'cancelled' && hasAccess && 'Cancelled — access until period end'}
+            {sub && status === 'past_due' && hasAccess && 'Payment past due'}
+            {sub && (status === 'expired' || (!hasAccess && (status === 'cancelled' || status === 'past_due' || status === 'trialing'))) && 'Subscription required'}
+          </h2>
+
+          {/* ── DETAIL LINE ────────────────────────────── */}
+          <p className={`mt-1 text-sm ${tone.body}`}>
+            {!sub && 'Cloud sync + Claude MCP — paste your personal URL into Claude.ai → Settings → Connectors.'}
+            {sub && status === 'trialing' && hasAccess && 'Cloud sync + Claude MCP active. Upgrade anytime — $9/month.'}
+            {sub && status === 'active' && periodEnd && `Renews on ${periodEnd}. Cloud sync + Claude MCP fully active.`}
+            {sub && status === 'cancelled' && hasAccess && periodEnd && `Your subscription was cancelled. Access continues until ${periodEnd}.`}
+            {sub && status === 'past_due' && hasAccess && 'Payment failed but access continues briefly. Please update your card.'}
+            {sub && !hasAccess && 'Cloud sync and Claude MCP are paused. Subscribe to re-enable — $9/month.'}
           </p>
 
+          {/* ── LOADING ────────────────────────────────── */}
           {loading && (
-            <p className="mt-3 text-sm text-blue-600 animate-pulse">Setting up your connector…</p>
+            <p className={`mt-3 text-sm ${tone.body} animate-pulse`}>Loading your plan…</p>
           )}
 
-          {!loading && !mcpUrl && (
-            <p className="mt-3 text-sm text-red-600">
-              Could not reach cloud server. Check your connection and reload this page.
-            </p>
+          {/* ── CONNECTOR URL (only when has access) ────── */}
+          {!loading && mcpUrl && hasAccess && (
+            <>
+              <p className={`mt-3 text-xs uppercase tracking-wide font-semibold ${tone.body}`}>
+                Your Claude connector URL
+              </p>
+              <div className="mt-1 flex items-center gap-2">
+                <code
+                  className={`flex-1 rounded ${tone.accent} px-3 py-2 text-xs font-mono ${tone.code} break-all select-all`}
+                >
+                  {mcpUrl}
+                </code>
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className={`shrink-0 rounded-md ${tone.btn} px-3 py-2 text-xs font-medium text-white transition-colors`}
+                >
+                  {copied ? '✓ Copied' : 'Copy'}
+                </button>
+              </div>
+              <p className={`mt-2 text-xs ${tone.body}`}>
+                Paste in{' '}
+                <a href="https://claude.ai" target="_blank" rel="noreferrer" className="underline">
+                  Claude.ai
+                </a>{' '}
+                → Settings → Connectors → Add MCP Server. This URL is your private key.
+              </p>
+            </>
           )}
 
-          {mcpUrl && (
-            <div className="mt-3 flex items-center gap-2">
-              <code className="flex-1 rounded bg-blue-100 px-3 py-2 text-xs font-mono text-blue-900 break-all select-all">
-                {mcpUrl}
-              </code>
+          {/* ── UPGRADE / SUBSCRIBE BUTTON ──────────────── */}
+          {!loading && sub && (status === 'trialing' || !hasAccess || status === 'cancelled' || status === 'past_due') && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
               <button
                 type="button"
-                onClick={handleCopy}
-                className="shrink-0 rounded-md bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                onClick={handleUpgrade}
+                disabled={checkoutLoading || !userId}
+                className={`rounded-md ${tone.btn} px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50`}
               >
-                {copied ? '✓ Copied' : 'Copy'}
+                {checkoutLoading
+                  ? 'Opening checkout…'
+                  : status === 'trialing'
+                    ? 'Upgrade now — $9/month'
+                    : status === 'cancelled' || status === 'past_due'
+                      ? 'Resubscribe — $9/month'
+                      : 'Subscribe — $9/month'}
               </button>
+              {checkoutErr && <span className="text-xs text-red-600">{checkoutErr}</span>}
             </div>
           )}
 
-          {mcpUrl && (
-            <p className="mt-2 text-xs text-blue-600">
-              This URL is your private key — keep it to yourself.
+          {/* ── CANCEL LINK (only when status='active') ─── */}
+          {!loading && sub && status === 'active' && (
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleCancel}
+                disabled={cancelLoading || !userId}
+                className="text-xs text-gray-500 hover:text-red-600 underline disabled:opacity-50"
+              >
+                {cancelLoading ? 'Cancelling…' : 'Cancel subscription'}
+              </button>
+              {cancelErr && <span className="text-xs text-red-600">{cancelErr}</span>}
+            </div>
+          )}
+
+          {/* ── SERVER UNREACHABLE ──────────────────────── */}
+          {!loading && !sub && !mcpUrl && (
+            <p className="mt-3 text-sm text-red-600">
+              Could not reach cloud server. Check your connection and reload this page.
             </p>
           )}
         </div>

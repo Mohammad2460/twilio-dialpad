@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useCallStore } from '../stores/call-store';
 import { getManager } from '../hooks/use-device';
 import { IncomingToggle } from './IncomingToggle';
@@ -16,6 +17,7 @@ export function StatusBar() {
   const settings = useCallStore((s) => s.settings);
   const meta = STATE_META[deviceState] ?? STATE_META.uninitialized;
   const needsRetry = deviceState === 'uninitialized' || deviceState === 'offline' || deviceState === 'error';
+  const cloudBlocked = useCloudSyncBlocked();
 
   function retryInit() {
     const s = useCallStore.getState().settings;
@@ -77,6 +79,46 @@ export function StatusBar() {
           {deviceError}
         </div>
       )}
+
+      {/* Subscription gate — backend returned 402 on the last cloud sync.
+          Calls still work locally; only cloud sync + Claude MCP are paused. */}
+      {cloudBlocked && (
+        <div className="bg-amber-50 px-3 py-2 text-xs text-amber-900 border-b border-amber-100 flex items-center justify-between gap-2">
+          <span>⚠ Cloud sync + Claude MCP paused — subscription expired.</span>
+          <button
+            type="button"
+            onClick={() => chrome.runtime.openOptionsPage()}
+            className="shrink-0 rounded bg-amber-600 px-2 py-1 text-white text-xs hover:bg-amber-700"
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Reactive watcher for the `cloudSyncBlocked` flag set in cloud.ts when
+ * `/api/calls/{userId}` returns 402.
+ */
+function useCloudSyncBlocked(): boolean {
+  const [blocked, setBlocked] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    chrome.storage.local.get('cloudSyncBlocked').then(({ cloudSyncBlocked }) => {
+      if (!cancelled) setBlocked(!!cloudSyncBlocked);
+    });
+    const listener = (changes: { [k: string]: chrome.storage.StorageChange }, area: string) => {
+      if (area === 'local' && changes.cloudSyncBlocked) {
+        setBlocked(!!changes.cloudSyncBlocked.newValue);
+      }
+    };
+    chrome.storage.onChanged.addListener(listener);
+    return () => {
+      cancelled = true;
+      chrome.storage.onChanged.removeListener(listener);
+    };
+  }, []);
+  return blocked;
 }

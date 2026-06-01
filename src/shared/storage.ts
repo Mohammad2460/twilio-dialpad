@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { CallRecord, Settings } from './types';
+import type { CallRecord, DialerQueueItem, Settings } from './types';
 
 const SettingsSchema = z.object({
   accountSid: z.string().regex(/^AC[a-zA-Z0-9]{32}$/),
@@ -91,6 +91,34 @@ export const storage = {
     await chrome.storage.local.remove('history');
   },
 
+  /** Delete a single call record by its `id` field. No-op if not found. */
+  async deleteCallRecord(id: string): Promise<void> {
+    const list = await this.getHistory();
+    const next = list.filter((r) => r.id !== id);
+    await chrome.storage.local.set({ history: next });
+  },
+
+  /**
+   * Sign out of this device — wipe Twilio creds, caller IDs, history, cloud binding.
+   * Transcripts in IndexedDB are preserved (those are "user data"; signout ≠ delete account).
+   * Cloud subscription on the backend is unaffected — cancel that separately.
+   */
+  async signOut(): Promise<void> {
+    await chrome.storage.local.remove([
+      'settings',
+      'callerIds',
+      'selectedCallerId',
+      'history',
+      'cloudUserId',
+      'cloudMcpUrl',
+      'cloudSyncBlocked',
+      'micGranted',
+      'dialerQueue',
+      'dialerIndex',
+      'dialerDailyCount',
+    ]);
+  },
+
   onChange(cb: (changes: chrome.storage.StorageChange) => void): () => void {
     const listener = (changes: { [k: string]: chrome.storage.StorageChange }, area: string) => {
       if (area === 'local' && changes.settings) cb(changes.settings);
@@ -117,5 +145,88 @@ export const storage = {
 
   async setSelectedCallerId(id: string): Promise<void> {
     await chrome.storage.local.set({ selectedCallerId: id });
+  },
+
+  // ── Auto-dialer queue ────────────────────────────────────────────────────
+
+  async getDialerQueue(): Promise<DialerQueueItem[]> {
+    const { dialerQueue } = await chrome.storage.local.get('dialerQueue');
+    if (!Array.isArray(dialerQueue)) return [];
+    return dialerQueue.filter(
+      (item): item is DialerQueueItem =>
+        typeof item === 'object' &&
+        item !== null &&
+        typeof (item as DialerQueueItem).id === 'string' &&
+        typeof (item as DialerQueueItem).number === 'string',
+    );
+  },
+
+  async setDialerQueue(items: DialerQueueItem[]): Promise<void> {
+    await chrome.storage.local.set({ dialerQueue: items });
+  },
+
+  async clearDialerQueue(): Promise<void> {
+    await chrome.storage.local.remove('dialerQueue');
+  },
+
+  async getDialerIndex(): Promise<number> {
+    const { dialerIndex } = await chrome.storage.local.get('dialerIndex');
+    return typeof dialerIndex === 'number' && dialerIndex >= 0 ? dialerIndex : 0;
+  },
+
+  async setDialerIndex(i: number): Promise<void> {
+    await chrome.storage.local.set({ dialerIndex: i });
+  },
+
+  // ── Do-not-call list ─────────────────────────────────────────────────────
+
+  async getDncList(): Promise<string[]> {
+    const { dncList } = await chrome.storage.local.get('dncList');
+    return Array.isArray(dncList) ? dncList.filter((s) => typeof s === 'string') : [];
+  },
+
+  async setDncList(list: string[]): Promise<void> {
+    await chrome.storage.local.set({ dncList: Array.from(new Set(list)) });
+  },
+
+  async addToDnc(number: string): Promise<string[]> {
+    const list = await this.getDncList();
+    if (!list.includes(number)) list.push(number);
+    await this.setDncList(list);
+    return list;
+  },
+
+  async removeFromDnc(number: string): Promise<string[]> {
+    const list = (await this.getDncList()).filter((n) => n !== number);
+    await this.setDncList(list);
+    return list;
+  },
+
+  // ── Daily call counter (TCPA cap) ────────────────────────────────────────
+
+  /**
+   * Returns count of auto-dial calls made today (local date).
+   * Reset happens implicitly when date string changes.
+   */
+  async getDialerDailyCount(): Promise<{ date: string; count: number }> {
+    const { dialerDailyCount } = await chrome.storage.local.get('dialerDailyCount');
+    const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, stable
+    if (
+      dialerDailyCount &&
+      typeof dialerDailyCount === 'object' &&
+      typeof (dialerDailyCount as { date?: unknown }).date === 'string' &&
+      typeof (dialerDailyCount as { count?: unknown }).count === 'number' &&
+      (dialerDailyCount as { date: string }).date === today
+    ) {
+      return dialerDailyCount as { date: string; count: number };
+    }
+    return { date: today, count: 0 };
+  },
+
+  async incrementDialerDailyCount(): Promise<{ date: string; count: number }> {
+    const current = await this.getDialerDailyCount();
+    const next = { date: current.date, count: current.count + 1 };
+    await chrome.storage.local.set({ dialerDailyCount: next });
+    return next;
   },
 };

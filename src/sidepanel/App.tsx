@@ -5,6 +5,7 @@ import { Dialpad } from './components/Dialpad';
 import { CallScreen } from './components/CallScreen';
 import { IncomingCall } from './components/IncomingCall';
 import { CallHistory } from './components/CallHistory';
+import { AutoDialer } from './components/AutoDialer';
 import { NotConfigured } from './components/NotConfigured';
 import { FolderPermissionBanner } from './components/FolderPermissionBanner';
 
@@ -27,6 +28,8 @@ export function App() {
           <CallScreen />
         ) : view === 'history' ? (
           <CallHistory />
+        ) : view === 'autodial' ? (
+          <AutoDialer />
         ) : (
           <Dialpad />
         )}
@@ -43,8 +46,15 @@ function Footer() {
   if (activeCall) return null;
   return (
     <nav className="flex border-t border-gray-200 bg-white">
-      <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>Keypad</TabButton>
-      <TabButton active={view === 'history'} onClick={() => setView('history')}>Recents</TabButton>
+      <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>
+        Keypad
+      </TabButton>
+      <TabButton active={view === 'autodial'} onClick={() => setView('autodial')}>
+        Auto-dial
+      </TabButton>
+      <TabButton active={view === 'history'} onClick={() => setView('history')}>
+        Recents
+      </TabButton>
     </nav>
   );
 }

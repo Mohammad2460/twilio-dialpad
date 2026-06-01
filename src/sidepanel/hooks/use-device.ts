@@ -9,6 +9,7 @@ import { storage } from '@shared/storage';
 import { findContactByPhone } from '@shared/hubspot';
 import { transcripts, buildTranscript, prefs } from '@shared/transcripts';
 import { ensureCloudAccount, syncCallToCloud } from '@shared/cloud';
+import { useDialerStore } from '../stores/dialer-store';
 import type { CallRecord, Transcript } from '@shared/types';
 
 // Module-level singleton — persists across React re-renders and side-panel re-mounts.
@@ -145,17 +146,29 @@ export function useDevice() {
       }
     });
 
-    // Re-init when settings change (wizard completion).
+    // Re-init when settings change (wizard completion). When settings are cleared
+    // (sign-out / reset), tear down the Device so the panel returns to setup state.
     const unsubSettings = storage.onChange(async (change) => {
       const s = (change.newValue as never) ?? null;
       setSettings(s);
       if (s) {
         mgr.init(s).catch((e) => console.error('[sidepanel] Device re-init failed', e));
+      } else {
+        try {
+          await mgr.teardown();
+        } catch (e) {
+          console.warn('[sidepanel] Device teardown failed', e);
+        }
+        setDeviceState('uninitialized' as never, 'Signed out — open Settings to configure.');
+        setHistory([]);
       }
     });
 
     // Load call history.
     storage.getHistory().then(setHistory);
+
+    // Hydrate dialer store (queue + dnc + daily count) — fire-and-forget.
+    useDialerStore.getState().hydrate().catch((e) => console.warn('[dialer] hydrate failed', e));
 
     // Keep history + callerIds fresh from storage changes.
     const storageListener = (
@@ -228,6 +241,24 @@ async function persistEndedCall(
     await storage.pushHistory(record);
   } catch (e) {
     console.error('[history] storage.pushHistory failed', e);
+  }
+
+  // Auto-dialer linkage: if the just-ended outgoing call matches the currently
+  // "calling" queue item, mark it done. Preview mode → never auto-advance.
+  try {
+    const dialer = useDialerStore.getState();
+    if (active.direction === 'out' && dialer.queue.length > 0) {
+      const calling = dialer.queue.find(
+        (q) => q.status === 'calling' && q.number === record.number,
+      );
+      if (calling) {
+        const finalStatus =
+          record.status === 'failed' ? 'failed' : 'done';
+        await dialer.markDone(calling.id, record.sid, finalStatus);
+      }
+    }
+  } catch (e) {
+    console.warn('[dialer] mark-done failed', e);
   }
 
   // 3. Cloud sync — fire-and-forget, never blocks call flow
