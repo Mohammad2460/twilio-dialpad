@@ -4,34 +4,95 @@
 
 ## What This Extension Does
 
-Twilio Dialpad is a browser extension that lets you make and receive phone calls directly from Chrome using your own Twilio account. All calls are routed through your personal Twilio account — not through any third-party service operated by us.
+Twilio Dialpad ("the extension") is a browser-based dialler that lets you make and receive phone calls from Chrome using your own Twilio account. It also offers an optional cloud sync feature so that an AI assistant (Anthropic's Claude) can read your call history and transcripts through the Model Context Protocol (MCP).
+
+All voice calls are routed through your personal Twilio account — not through any service operated by us. Cloud sync is a separate, paid feature described below.
 
 ---
 
 ## Data We Collect
 
-**We collect nothing.** This extension has no backend, no analytics, no crash reporting, and no telemetry. No data ever leaves your browser to servers we operate.
+### A. Stored locally on your device (`chrome.storage.local`)
 
-### Data stored locally on your device (`chrome.storage.local`)
+Always collected; never leaves your browser unless cloud sync is enabled.
 
-| Data | Purpose | Leaves your device? |
-|------|---------|-------------------|
+| Data | Purpose | Sent to third parties? |
+|------|---------|-----------------------|
 | Twilio Function URL | Connects to your deployed token endpoint | Only to your own Twilio Function |
-| Twilio Account SID | Identifies your Twilio account (read-only) | No |
+| Twilio Account SID | Identifies your Twilio account (read-only) | See "Cloud sync" below |
 | Twilio API Key SID | Reference only (secret never stored) | No |
 | Twilio TwiML App SID | Routes outbound calls | No |
 | Client identity | Your Twilio Client name | To your Twilio Function |
-| Caller ID numbers | Your Twilio phone numbers for outbound calls | No |
-| Call history | Last 20 call records (number, duration, direction) | No |
+| Caller ID numbers | Your Twilio phone numbers | No |
+| HubSpot API token (optional) | Reverse contact lookup on incoming calls | Only to HubSpot's API (your account) |
+| Deepgram API key (optional) | Live call transcription | Only to Deepgram (your account) |
+| Call history | Last 20 call records (number, duration, direction) | See "Cloud sync" below |
+| Transcripts | Per-call transcript JSON (text only, no audio) | See "Cloud sync" below |
 
-### Data sent to Twilio
+### B. Sent to our cloud backend at `dialler-mcp.vercel.app` (only if subscribed)
 
-When you make or receive a call, the extension communicates directly with:
-- **Your deployed Twilio Function** — to mint a short-lived access token
-- **Twilio Voice Edge servers** — for the WebRTC media stream
-- **Twilio Event Gateway** — for signalling
+When the subscription (trial or paid) is active, the extension sends the following to our backend so that Claude can answer questions about your calls:
 
-This is standard Twilio Voice SDK behaviour. Refer to [Twilio's Privacy Policy](https://www.twilio.com/en-us/legal/privacy) for how Twilio handles call data.
+| Data | Why |
+|------|-----|
+| Twilio Account SID | Used as an anonymous account identifier (so reinstalling the extension restores the same account) |
+| Call metadata (number, duration, direction, status, timestamp) | So the AI tools can list and filter your calls |
+| Call transcripts (text only) | So Claude can summarise, search, and analyse your conversations |
+| Contact snapshot from HubSpot (if HubSpot is configured) | So Claude can identify who you called |
+| Email + name | Captured from Dodo Payments only when you complete a checkout; used to identify you for customer support |
+
+We **do not** record audio, store voicemail, capture screen content, or fingerprint your browser. We never sell, share, or rent your data.
+
+### C. Sent to Twilio (always, regardless of subscription)
+
+Standard Twilio Voice SDK behaviour. See [Twilio's Privacy Policy](https://www.twilio.com/en-us/legal/privacy).
+
+### D. Sent to Dodo Payments (only at checkout)
+
+Payment, billing address, and email information is collected by [Dodo Payments](https://dodopayments.com) during checkout. We never see or store your card details. See [Dodo's Privacy Policy](https://dodopayments.com/privacy-policy).
+
+---
+
+## Subscriptions & Billing
+
+### Pricing
+
+- **7-day free trial** on installation. No card required.
+- **$9.00 USD / month** after the trial.
+- Subscription is processed by **Dodo Payments** (third-party processor).
+
+### Auto-renewal
+
+After the 7-day trial ends, the extension will charge $9.00 USD per month automatically — but only if you have completed a Dodo checkout. If you never enter a payment method, you simply lose cloud-sync + Claude MCP access; nothing is charged.
+
+### Cancellation
+
+You can cancel at any time from the extension's **Settings → Pro plan → Cancel subscription** button. Cloud features remain active until the end of your current billing period; after that, only local calling continues.
+
+### Refunds
+
+- **During the 7-day free trial:** cancel any time, no charge.
+- **After the first paid charge:** no refunds. You retain access until the end of the period you already paid for.
+
+This is a hard policy chosen for operational simplicity. If you believe there is an exceptional circumstance, contact us via the support channel below — we will respond, but cannot guarantee a refund.
+
+---
+
+## Data Retention
+
+- **Local data** (`chrome.storage.local`, IndexedDB): persists until you uninstall the extension or clear extension data.
+- **Cloud data** (our backend): retained while your account is active. **30 days** after subscription cancellation/expiry, all call records and transcripts are deleted. Account email + Twilio Account SID may be retained for fraud/abuse prevention.
+
+---
+
+## Account Deletion
+
+Email the support address (below) with your Twilio Account SID. We will:
+1. Cancel any active Dodo subscription.
+2. Delete all calls + transcripts + account row from our backend within 7 days.
+3. Confirm deletion by reply.
+
+A self-serve in-extension deletion button is on our roadmap.
 
 ---
 
@@ -39,9 +100,10 @@ This is standard Twilio Voice SDK behaviour. Refer to [Twilio's Privacy Policy](
 
 - We do not collect or transmit your Twilio Auth Token (discarded after provisioning)
 - We do not record audio
-- We do not store call content
+- We do not capture screen content, keystrokes, or browsing history
 - We do not use cookies or tracking pixels
-- We do not sell or share any data
+- We do not run analytics SDKs
+- We do not sell or share data with advertisers
 
 ---
 
@@ -49,17 +111,15 @@ This is standard Twilio Voice SDK behaviour. Refer to [Twilio's Privacy Policy](
 
 | Permission | Why needed |
 |-----------|-----------|
-| `storage` | Save your settings and call history locally |
+| `storage` | Save settings + call history locally |
 | `sidePanel` | Display the dialpad in Chrome's side panel |
-| `notifications` | Show a desktop notification for incoming calls |
-| Host permission `*.twilio.com` | Connect to Twilio's voice infrastructure for WebRTC calls |
-| Host permission `*.twil.io` | Connect to your deployed Twilio Functions |
-
----
-
-## Data Retention
-
-All data is stored locally in `chrome.storage.local` and is deleted when you uninstall the extension. Call history is capped at 20 records and automatically rotates.
+| `notifications` | Show desktop notifications for incoming calls |
+| `clipboardRead` | Let you paste phone numbers into the dialpad |
+| `tabs` | Open HubSpot contact pages + checkout/options in new tabs |
+| `*.twilio.com` / `*.twil.io` | Connect to Twilio's voice + token infrastructure |
+| `api.hubapi.com` | Optional HubSpot contact reverse-lookup (only if you configure HubSpot) |
+| `api.deepgram.com` | Optional live transcription (only if you configure a Deepgram key) |
+| `dialler-mcp.vercel.app` | Cloud sync + Claude MCP relay (only while subscribed) |
 
 ---
 
@@ -77,4 +137,7 @@ If material changes are made, the extension version will be updated and the "Las
 
 ## Contact
 
-Questions? Open an issue at: **https://github.com/Mohammad2460/twilio-dialpad/issues**
+- Support: open an issue at **https://github.com/Mohammad2460/twilio-dialpad/issues**
+- Subscription / billing questions: same channel
+
+We respond within 5 business days.

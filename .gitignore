@@ -12,3 +12,5 @@ coverage/
 .claude/
 *.zip
 twilio-dialpad-share*/
+backend/.next/
+backend/tsconfig.tsbuildinfo

@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/lib/cors';
 import { DBCallStore } from '@/lib/db-store';
 import { buildMcpTools } from '@/lib/mcp-tools';
+import { supabase } from '@/lib/supabase';
 
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SERVER_INFO = { name: 'twilio-dialer', version: '1.0.0' };
@@ -100,6 +101,20 @@ export async function POST(
       });
 
     case 'tools/call': {
+      // Subscription gate — every tool call requires active access.
+      const { data: access } = await supabase.rpc('user_has_access', { uid: userId });
+      if (!access) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
+        return NextResponse.json(
+          jsonRpcError(
+            id,
+            -32001,
+            `Subscription required to use Twilio Dialer tools. Upgrade at ${baseUrl}/api/checkout/${userId}`,
+          ),
+          { status: 200, headers: corsHeaders },
+        );
+      }
+
       const toolName = typeof rpcParams.name === 'string' ? rpcParams.name : '';
       const toolArgs = (rpcParams.arguments ?? {}) as Record<string, unknown>;
       const tool = tools.find((t) => t.name === toolName);

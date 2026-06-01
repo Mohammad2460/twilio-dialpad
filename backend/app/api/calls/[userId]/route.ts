@@ -33,6 +33,16 @@ export async function POST(
     return NextResponse.json({ error: 'User not found' }, { status: 404, headers: corsHeaders });
   }
 
+  // Subscription gate — require active access.
+  const { data: access } = await supabase.rpc('user_has_access', { uid: userId });
+  if (!access) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
+    return NextResponse.json(
+      { error: 'subscription_required', upgradeUrl: `${baseUrl}/api/checkout/${userId}` },
+      { status: 402, headers: corsHeaders },
+    );
+  }
+
   // ── parse body ───────────────────────────────────────────────────
   let body: unknown;
   try {
