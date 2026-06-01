@@ -14,3 +14,6 @@ coverage/
 twilio-dialpad-share*/
 backend/.next/
 backend/tsconfig.tsbuildinfo
+supabase/
+backend/supabase/
+**/.temp/
