@@ -1,6 +1,6 @@
 # Privacy Policy — Twilio Dialpad
 
-**Last updated: May 2026**
+**Last updated: June 2026**
 
 ## What This Extension Does
 
@@ -42,6 +42,18 @@ When the subscription (trial or paid) is active, the extension sends the followi
 | Email + name | Captured from Dodo Payments only when you complete a checkout; used to identify you for customer support |
 
 We **do not** record audio, store voicemail, capture screen content, or fingerprint your browser. We never sell, share, or rent your data.
+
+### B2. Anonymous usage analytics (always, to `dialler-mcp.vercel.app`)
+
+To understand where new users get stuck during setup, the extension sends **anonymous product-usage events** to our backend. These contain **no message content, no phone numbers, and no credentials**.
+
+| Data | Why |
+|------|-----|
+| A random install identifier (UUID) | Counts unique installs and measures the setup funnel. Not linked to your identity. |
+| Setup milestone events (e.g. "opened side panel", "setup wizard started", "first call completed") | Tells us which setup step loses users so we can fix it |
+| Coarse error reason for failed auto-setup (e.g. which step failed) | Helps us debug setup failures |
+
+We collect **only** the event name, a timestamp, and small non-identifying attributes (e.g. whether a call had a transcript — true/false). Raw events are deleted after **90 days**. This is first-party only — no third-party analytics SDK, no advertising, no cross-site tracking, no cookies.
 
 ### C. Sent to Twilio (always, regardless of subscription)
 
@@ -102,7 +114,8 @@ A self-serve in-extension deletion button is on our roadmap.
 - We do not record audio
 - We do not capture screen content, keystrokes, or browsing history
 - We do not use cookies or tracking pixels
-- We do not run analytics SDKs
+- We do not run third-party analytics SDKs (our usage analytics are first-party and anonymous — see Section B2)
+- We do not include phone numbers, call content, or credentials in any usage analytics
 - We do not sell or share data with advertisers
 
 ---

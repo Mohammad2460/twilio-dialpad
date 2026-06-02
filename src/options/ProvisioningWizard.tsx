@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Settings } from '@shared/types';
 import { storage } from '@shared/storage';
+import { track } from '@shared/telemetry';
 import { SetupForm } from './SetupForm';
 import { AutoSetupProgress } from './AutoSetupProgress';
 
@@ -19,6 +20,12 @@ interface Props {
 
 export function ProvisioningWizard({ initial, onDone }: Props) {
   const [input, setInput] = useState<SetupInput | null>(null);
+
+  // Telemetry: user reached setup. Only count fresh setups (not reconfigures)
+  // so the funnel measures first-time activation.
+  useEffect(() => {
+    if (!initial) track('wizard_started');
+  }, [initial]);
 
   async function finish(
     result: {
@@ -70,7 +77,11 @@ export function ProvisioningWizard({ initial, onDone }: Props) {
   return (
     <SetupForm
       initial={initial}
-      onSubmit={(inp) => setInput(inp)}
+      onSubmit={(inp) => {
+        // Creds validated (SetupForm verifies against Twilio before calling this).
+        track('twilio_creds_submitted', { reconfigure: !!initial });
+        setInput(inp);
+      }}
     />
   );
 }
