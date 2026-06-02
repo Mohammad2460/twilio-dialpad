@@ -9,6 +9,7 @@ import { storage } from '@shared/storage';
 import { findContactByPhone } from '@shared/hubspot';
 import { transcripts, buildTranscript, prefs } from '@shared/transcripts';
 import { ensureCloudAccount, syncCallToCloud } from '@shared/cloud';
+import { track } from '@shared/telemetry';
 import { useDialerStore } from '../stores/dialer-store';
 import type { CallRecord, Transcript } from '@shared/types';
 
@@ -263,7 +264,16 @@ async function persistEndedCall(
 
   // 3. Cloud sync — fire-and-forget, never blocks call flow
   ensureCloudAccount()
-    .then(({ userId }) => syncCallToCloud(userId, record, transcript))
+    .then(({ userId }) => {
+      syncCallToCloud(userId, record, transcript);
+      // Telemetry: activation = first successfully-synced call. Fire once.
+      void chrome.storage.local.get('firstCallTracked').then(({ firstCallTracked }) => {
+        if (!firstCallTracked) {
+          track('first_call_synced', { hasTranscript: !!transcript });
+          chrome.storage.local.set({ firstCallTracked: true }).catch(() => {});
+        }
+      });
+    })
     .catch(() => {});
 
   // 4. JSON sync-folder write (only if user configured a folder)

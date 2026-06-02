@@ -6,6 +6,7 @@ import { maskSid } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { normalizeE164 } from '@shared/phone';
 import { testDeepgramKey } from '@shared/deepgram';
+import { track } from '@shared/telemetry';
 import { prefs } from '@shared/transcripts';
 import { ensureCloudAccount, getSubscription, getCheckoutUrl, cancelSubscription, type Subscription } from '@shared/cloud';
 
@@ -387,6 +388,8 @@ function DeepgramCard({ settings, onUpdate }: { settings: Settings; onUpdate: (s
       const trimmed = key.trim();
       const updated = await storage.updateSettings({ deepgramApiKey: trimmed || undefined });
       if (updated) onUpdate(updated);
+      // Telemetry: user enabled transcription (the key value is never sent).
+      if (trimmed) track('transcript_enabled');
       setStatus('saved');
       setTimeout(() => setStatus('idle'), 2500);
     } catch (e) {

@@ -1,5 +1,7 @@
+import { useEffect } from 'react';
 import { useCallStore } from './stores/call-store';
 import { useDevice } from './hooks/use-device';
+import { track } from '@shared/telemetry';
 import { StatusBar } from './components/StatusBar';
 import { Dialpad } from './components/Dialpad';
 import { CallScreen } from './components/CallScreen';
@@ -14,6 +16,12 @@ export function App() {
   const settings = useCallStore((s) => s.settings);
   const activeCall = useCallStore((s) => s.activeCall);
   const view = useCallStore((s) => s.view);
+
+  // Telemetry: the side panel mounting = the user opened the dialpad. Fire once
+  // per mount (empty deps) — separates "installed, never opened" from "bailed".
+  useEffect(() => {
+    track('panel_opened');
+  }, []);
 
   if (!settings) return <NotConfigured />;
 

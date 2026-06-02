@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { autoProvisionAll, type DeployProgress } from '@shared/twilio-rest';
+import { track } from '@shared/telemetry';
 import type { Settings } from '@shared/types';
 import type { SetupInput } from './ProvisioningWizard';
 
@@ -32,6 +33,9 @@ export function AutoSetupProgress({ input, onDone, onBack }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // Track the live step so a failure can report exactly where it died
+    // (setCurrentStep is async — this closure var is accurate immediately).
+    let lastStep = 'api-key';
 
     autoProvisionAll(
       input.accountSid,
@@ -41,14 +45,19 @@ export function AutoSetupProgress({ input, onDone, onBack }: Props) {
       input.numberSid,
       (p: DeployProgress) => {
         if (cancelled) return;
+        lastStep = p.step;
         setCurrentStep(p.step);
         setSteps((prev) => (prev.includes(p.step) ? prev : [...prev, p.step]));
         if (p.step === 'done') setDone(true);
       },
     ).then((result) => {
+      track('autodeploy_succeeded');
       if (!cancelled) onDone(result);
     }).catch((e: unknown) => {
-      if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+      const reason = e instanceof Error ? e.message : String(e);
+      // Coarse reason bucket (first 80 chars, no creds — messages never echo tokens).
+      track('autodeploy_failed', { step: lastStep, reason: reason.slice(0, 80) });
+      if (!cancelled) setError(reason);
     });
 
     return () => { cancelled = true; };

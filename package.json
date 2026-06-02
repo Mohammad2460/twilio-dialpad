@@ -1,6 +1,6 @@
 {
   "name": "twilio-dialpad",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "Twilio Voice dialpad as a Chrome (MV3) extension — side panel, WebRTC via offscreen document.",
