@@ -40,31 +40,23 @@ export const TrackBatchSchema = z.object({
 export type TelemetryEvent = z.infer<typeof TelemetryEventSchema>;
 export type TrackBatch = z.infer<typeof TrackBatchSchema>;
 
-// Defense in depth: keys we must never persist even if a client sends them.
-const BLOCKED_META_KEYS = new Set([
-  'number',
-  'phone',
-  'authToken',
-  'accountSid',
-  'apiKeySecret',
-  'token',
-  'deepgramApiKey',
-  'hubspotToken',
-  'configSecret',
-  'transcript',
-  'text',
+// ALLOWLIST (not denylist): only these meta keys are ever persisted. Any other
+// key — including a future one that accidentally carries PII — is dropped. This
+// is the safe default: new keys are excluded until explicitly added here.
+const ALLOWED_META_KEYS = new Set([
+  'step',          // autodeploy_failed: which step
+  'reason',        // autodeploy_failed: coarse error (already truncated client-side)
+  'reconfigure',   // twilio_creds_submitted: re-run vs first setup
+  'hasTranscript', // first_call_synced: true/false
+  'backfill',      // extension_installed: backfilled existing install
 ]);
 
-/** Strip blocked keys + cap to 12 keys. Returns a clean meta object. */
+/** Keep only allowlisted keys. Returns a clean, PII-free meta object. */
 export function sanitizeMeta(meta: Record<string, unknown> | undefined): Record<string, unknown> {
   if (!meta) return {};
   const out: Record<string, unknown> = {};
-  let n = 0;
   for (const [k, v] of Object.entries(meta)) {
-    if (BLOCKED_META_KEYS.has(k)) continue;
-    if (n >= 12) break;
-    out[k] = v;
-    n++;
+    if (ALLOWED_META_KEYS.has(k)) out[k] = v;
   }
   return out;
 }

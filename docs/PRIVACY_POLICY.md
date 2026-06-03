@@ -45,15 +45,19 @@ We **do not** record audio, store voicemail, capture screen content, or fingerpr
 
 ### B2. Anonymous usage analytics (always, to `dialler-mcp.vercel.app`)
 
-To understand where new users get stuck during setup, the extension sends **anonymous product-usage events** to our backend. These contain **no message content, no phone numbers, and no credentials**.
+To understand where new users get stuck during setup, the extension sends **product-usage events** to our backend. These contain **no message content, no phone numbers, and no credentials**.
 
 | Data | Why |
 |------|-----|
-| A random install identifier (UUID) | Counts unique installs and measures the setup funnel. Not linked to your identity. |
+| A random install identifier (UUID) | Counts unique installs and measures the setup funnel. Pseudonymous — generated on your device, not derived from any personal detail. |
 | Setup milestone events (e.g. "opened side panel", "setup wizard started", "first call completed") | Tells us which setup step loses users so we can fix it |
 | Coarse error reason for failed auto-setup (e.g. which step failed) | Helps us debug setup failures |
 
-We collect **only** the event name, a timestamp, and small non-identifying attributes (e.g. whether a call had a transcript — true/false). Raw events are deleted after **90 days**. This is first-party only — no third-party analytics SDK, no advertising, no cross-site tracking, no cookies.
+We collect **only** the event name, a timestamp, and small non-identifying attributes (e.g. whether a call had a transcript — true/false). The events never contain message content, phone numbers, or credentials.
+
+**Linkage:** before you create a cloud account, these events are pseudonymous (tied only to the random install id). Once you have a cloud account, new events are associated with your account id — so we can understand the journey from install to paid — meaning they become linkable to you. They remain unlinked to call content or phone numbers.
+
+Raw events are deleted after **90 days**. This is first-party only — no third-party analytics SDK, no advertising, no cross-site tracking, no cookies.
 
 ### C. Sent to Twilio (always, regardless of subscription)
 

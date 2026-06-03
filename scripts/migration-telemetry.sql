@@ -55,21 +55,28 @@ $$;
 -- ============================================================================
 
 -- ── 5a. Activation funnel (lifetime, distinct installs per stage) ───────────
+-- Denominator = installs that actually emitted `extension_installed` (real
+-- installs, incl. backfilled existing ones). An install with later-stage events
+-- but no install event is EXCLUDED so the top of the funnel is never inflated
+-- and every stage is a true subset of the one above it.
 create or replace view public.v_funnel as
 with reached as (
-  select install_id, max(public.tel_stage_rank(name)) as max_rank
+  select install_id,
+         bool_or(name = 'extension_installed') as has_install,
+         max(public.tel_stage_rank(name))      as max_rank
   from public.telemetry_events
   group by install_id
 )
 select s.rank, s.stage,
-       count(*) filter (where r.max_rank >= s.rank) as installs
+       count(*) filter (where r.has_install and r.max_rank >= s.rank) as installs
 from (values
   (1,'installed'),
   (2,'panel_opened'),
   (3,'wizard_started'),
   (4,'creds_submitted'),
   (5,'autodeploy_ok'),
-  (6,'device_ready'),
+  -- rank 6 (device_ready) reserved but not yet emitted — omitted so it can't
+  -- falsely read ~100%. Re-add when the device_ready event is wired.
   (7,'activated_first_call')
 ) as s(rank, stage)
 cross join reached r
