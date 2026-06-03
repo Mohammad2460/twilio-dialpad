@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Twilio Dialpad — Product Requirements & Context Document</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm; }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    color: #1c2330; line-height: 1.5; font-size: 11pt; margin: 0;
+  }
+  h1 { font-size: 26pt; margin: 0 0 4px; color: #0b1b3a; letter-spacing: -0.5px; }
+  h2 {
+    font-size: 15pt; color: #0b1b3a; margin: 26px 0 8px;
+    border-bottom: 2px solid #2563eb; padding-bottom: 4px; page-break-after: avoid;
+  }
+  h3 { font-size: 12pt; color: #14306b; margin: 16px 0 4px; page-break-after: avoid; }
+  p, li { font-size: 10.5pt; }
+  ul, ol { margin: 6px 0 6px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.5pt; }
+  th, td { border: 1px solid #d2d9e6; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #eef3fc; color: #0b1b3a; font-weight: 600; }
+  tr:nth-child(even) td { background: #f8fafd; }
+  .lede { font-size: 12pt; color:#39455c; margin: 2px 0 0; }
+  .tagline { color: #2563eb; font-weight: 600; font-size: 12.5pt; margin: 6px 0 0; }
+  .meta { color: #6b7488; font-size: 9pt; margin-top: 10px; }
+  .pill { display:inline-block; background:#eef3fc; color:#14306b; border:1px solid #cdd9f2;
+          border-radius: 20px; padding: 2px 10px; font-size: 8.5pt; margin: 2px 4px 2px 0; }
+  .callout { background:#f3f7ff; border-left: 4px solid #2563eb; padding: 8px 12px; margin: 10px 0; border-radius: 4px; }
+  .warn { background:#fff7ed; border-left: 4px solid #f59e0b; padding: 8px 12px; margin: 10px 0; border-radius: 4px; }
+  .cover { border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 8px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; }
+  .small { font-size: 9pt; color:#6b7488; }
+  .kpi { font-weight:700; color:#0b1b3a; }
+  section { page-break-inside: auto; }
+  h2 { page-break-before: auto; }
+  code { background:#eef1f6; padding:1px 4px; border-radius:3px; font-size: 9pt; }
+  .toc li { font-size: 10pt; }
+  .footer { position: fixed; bottom: 6mm; left: 0; right: 0; text-align:center; color:#9aa3b4; font-size: 8pt; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <h1>Twilio Dialpad</h1>
+  <p class="tagline">A self-hosted softphone for Chrome — your Twilio account, your AI call assistant.</p>
+  <p class="lede">Product Requirements &amp; Context Document — the single source of truth for product, market, traction, and growth.</p>
+  <p class="meta">Version of doc: 1.0 · Product version: 1.2.0 · Prepared June 2026 · Owner: SaaSByMohd ·
+  Purpose: drop into any AI assistant as full product context for marketing, sales, growth, and competitor work.</p>
+  <div style="margin-top:8px">
+    <span class="pill">Chrome Extension (MV3)</span>
+    <span class="pill">BYO-Twilio</span>
+    <span class="pill">WebRTC Softphone</span>
+    <span class="pill">AI Call Transcripts</span>
+    <span class="pill">Claude MCP</span>
+    <span class="pill">$9/mo</span>
+    <span class="pill">Solo founder</span>
+  </div>
+</div>
+
+<h2>0. How to use this document</h2>
+<p>This is a context pack, not a spec for engineers. Upload it to ChatGPT, Claude, Gemini, or any model and ask it to act as your marketing strategist, sales coach, growth advisor, or competitive analyst. It contains everything the model needs: what the product is, who it is for, how it makes money, the real numbers today, where users drop off, and where the growth is.</p>
+<div class="callout"><b>Good opening prompts:</b>
+<ul>
+<li>"Using this document, write 5 Reddit posts that would attract solo cold-callers without sounding like an ad."</li>
+<li>"Based on the funnel data here, what is the single highest-leverage thing I should fix to convert more trials to paid?"</li>
+<li>"Give me a competitor brief comparing this product to JustCall, Aircall, and OpenPhone for a solo SDR buyer."</li>
+<li>"Write Chrome Web Store listing copy that improves install conversion, given the positioning here."</li>
+</ul></div>
+
+<h2>1. Executive summary</h2>
+<p><b>Twilio Dialpad</b> is a Chrome extension that turns your own Twilio account into a full calling app (a "softphone") that lives in Chrome's side panel. You make and take phone calls right in the browser. Unlike the big calling platforms, you bring your own Twilio account, so you pay Twilio's raw per-minute rate instead of a marked-up per-seat subscription.</p>
+<p>Its standout feature: every call can be transcribed, and those transcripts connect to AI assistants (like Claude) through a personal link. You can literally ask an AI "how did my calls go today?" and get real answers — coaching, summaries, objection patterns — with zero manual work.</p>
+<p>It is built for <b>solo salespeople and cold-callers</b> who already use Twilio (or are willing to set it up) and want a fast, cheap dialer plus AI call intelligence, without paying for an enterprise platform.</p>
+<div class="grid2">
+<div>
+<h3>What it is</h3>
+<ul>
+<li>Browser-based phone (softphone) for Chrome</li>
+<li>Self-hosted on your own Twilio account</li>
+<li>Auto-dialer for calling through lists</li>
+<li>Live AI transcription + Claude analysis</li>
+</ul>
+</div>
+<div>
+<h3>Where it stands today</h3>
+<ul>
+<li>Live on the Chrome Web Store (v1.2.0)</li>
+<li>27 installs · 6 activated users · ~1 paying</li>
+<li>Heavy usage once people get set up</li>
+<li>Pre-product-market-fit, early validation stage</li>
+</ul>
+</div>
+</div>
+
+<h2>2. The problem &amp; why now</h2>
+<h3>The problem</h3>
+<ul>
+<li><b>Calling platforms are expensive per seat.</b> Aircall, JustCall, Dialpad (the company), Kixie and similar charge $30–$80+ per user per month, often with annual contracts. For a solo rep or a tiny team, that is a lot for "a dialer."</li>
+<li><b>People who already have Twilio have no good front-end.</b> Twilio gives you the raw calling infrastructure cheaply, but no usable everyday phone UI. Building one yourself is a project.</li>
+<li><b>Call intelligence is locked behind enterprise tools.</b> Transcription, call summaries, and coaching usually live in Gong/Chorus-class products priced for teams, not individuals.</li>
+</ul>
+<h3>Why now</h3>
+<ul>
+<li>AI assistants (ChatGPT, Claude) are mainstream — a solo rep will happily paste a link and ask an AI about their calls.</li>
+<li>Cheap, accurate speech-to-text (Deepgram and similar) makes per-call transcription affordable for one person.</li>
+<li>The "bring your own infrastructure + thin software layer" model is increasingly accepted by technical buyers who want to avoid per-seat SaaS markups.</li>
+</ul>
+
+<h2>3. Target customer (ICP)</h2>
+<h3>Primary ICP</h3>
+<p><b>Solo outbound callers who already have, or can set up, a Twilio account.</b> Think independent SDRs, founders doing their own sales, freelance appointment-setters, recruiters, and small agency operators who live in the browser and make a lot of outbound calls.</p>
+<table>
+<tr><th>Attribute</th><th>Primary ICP</th></tr>
+<tr><td>Role</td><td>Solo SDR / founder-seller / appointment setter / recruiter</td></tr>
+<tr><td>Team size</td><td>1 (buys with own card, no procurement)</td></tr>
+<tr><td>Technical level</td><td>Comfortable enough to create a Twilio account &amp; paste an API key</td></tr>
+<tr><td>Core job</td><td>Make many outbound calls fast; remember/act on what was said</td></tr>
+<tr><td>Pain</td><td>Per-seat dialers too costly; wants cheap calling + AI notes</td></tr>
+<tr><td>Where they are</td><td>Mostly US, Windows, English (per current install data)</td></tr>
+</table>
+<h3>Secondary / future segments</h3>
+<ul>
+<li><b>Tiny sales teams (2–10)</b> at startups who want shared, cheap calling without an enterprise contract.</li>
+<li><b>Twilio developers / tinkerers</b> who want a ready-made softphone instead of building one.</li>
+</ul>
+<div class="warn"><b>Anti-persona (do not target yet):</b> non-technical users who don't have Twilio and won't set it up, and large teams needing admin controls, compliance, and SSO. The current setup wall loses them and support cost is high.</div>
+
+<h2>4. Value proposition &amp; differentiators</h2>
+<p class="tagline">"All the calling power of Twilio, with an AI assistant that actually remembers your calls — for the price of a coffee a week."</p>
+<table>
+<tr><th>Differentiator</th><th>Why it matters to the buyer</th></tr>
+<tr><td><b>Bring-your-own-Twilio = radically cheaper</b></td><td>Pay Twilio's raw per-minute rate + $9/mo software, instead of $30–80/seat. No contracts.</td></tr>
+<tr><td><b>AI call intelligence for one person</b></td><td>Transcripts + ask-an-AI ("how did my calls go?") — a capability normally reserved for enterprise teams.</td></tr>
+<tr><td><b>Connects to Claude with one link</b></td><td>No setup: copy a personal link, paste into Claude, and your call history becomes answerable by AI.</td></tr>
+<tr><td><b>Lives in Chrome's side panel</b></td><td>Always one click away while prospecting in the browser/CRM. No separate app or desktop install.</td></tr>
+<tr><td><b>Your data stays in your accounts</b></td><td>Calls run through your Twilio; secrets stay on your side. Appeals to privacy-minded, technical buyers.</td></tr>
+<tr><td><b>Auto-dialer built in</b></td><td>Paste a list, power-dial through it hands-free — the "saves me hours" moment for cold-callers.</td></tr>
+</table>
+
+<h2>5. What the product does (feature set)</h2>
+<h3>Core calling</h3>
+<ul>
+<li>Side-panel dialpad — call any phone number or another Twilio client</li>
+<li>Inbound calls — ring, accept/reject, desktop notifications</li>
+<li>In-call controls — mute, keypad tones (DTMF), hang up</li>
+<li>Call history — recent calls with number, direction, duration</li>
+<li>Auto-reconnect &amp; token refresh — stays connected reliably</li>
+</ul>
+<h3>Productivity</h3>
+<ul>
+<li><b>Auto-dialer</b> — load a list of numbers and power-dial through a queue</li>
+<li><b>One-click setup wizard</b> — automatically creates the needed Twilio pieces (API key, call routing, and the small server-side functions) so most users never touch the Twilio console manually</li>
+<li>Paste-to-dial — paste a number straight into the dialpad</li>
+</ul>
+<h3>AI &amp; intelligence (the differentiator)</h3>
+<ul>
+<li><b>Live transcription</b> — each call transcribed in real time (optional, uses a transcription key)</li>
+<li><b>Claude / AI connector</b> — a personal link you paste into Claude so an AI can read your call history and transcripts and answer questions, summarize, and surface patterns</li>
+<li>Optional transcript export to a local folder</li>
+</ul>
+<h3>CRM</h3>
+<ul>
+<li><b>HubSpot lookup</b> — incoming/known numbers matched to a HubSpot contact so you see who's calling</li>
+</ul>
+
+<h2>6. How it works (plain-English journey)</h2>
+<ol>
+<li><b>Install</b> from the Chrome Web Store.</li>
+<li><b>Connect Twilio</b> — paste your Twilio credentials once; the wizard auto-configures everything behind the scenes.</li>
+<li><b>Start a 7-day free trial</b> — no card required.</li>
+<li><b>Make calls</b> from the side panel; calls route through your own Twilio account.</li>
+<li><b>(Optional) turn on transcription</b> and <b>connect Claude</b> with a personal link.</li>
+<li><b>Subscribe ($9/mo)</b> to keep cloud sync + AI features after the trial; local calling continues regardless.</li>
+</ol>
+<div class="callout"><b>The "aha" moment</b> is the first successful call — and, more powerfully, seeing a transcript appear and asking an AI about it. Getting users to that moment fast is the single biggest growth lever (see §9).</div>
+
+<h2>7. Positioning &amp; category</h2>
+<p><b>Category:</b> Browser-based sales dialer / softphone with built-in AI call intelligence.</p>
+<p><b>Position:</b> The cheapest serious dialer for solo callers who want AI notes — by bringing your own Twilio and paying only a thin software fee.</p>
+<p><b>One-line positioning:</b> "Aircall-style calling + Gong-style AI notes, for one person, at 1/5th the price — on top of your own Twilio."</p>
+<div class="warn"><b>Naming risk (important for marketing/SEO):</b> "Dialpad" is also a large, well-funded calling company. The current name collides with theirs — hurting search discoverability and risking confusion/trademark friction. Consider a distinct brand name for store listing &amp; marketing. Flag this when asking an AI for naming/SEO help.</div>
+
+<h2>8. Competitive landscape</h2>
+<table>
+<tr><th>Competitor</th><th>Who it's for</th><th>Rough price</th><th>How we differ</th></tr>
+<tr><td>Aircall</td><td>Teams / call centers</td><td>~$30–50/user/mo, annual</td><td>We're solo-friendly, no contract, 1/5 price, BYO-Twilio</td></tr>
+<tr><td>JustCall</td><td>SMB sales teams</td><td>~$30–70/user/mo</td><td>Cheaper, self-hosted infra, AI via Claude link</td></tr>
+<tr><td>Dialpad (the company)</td><td>Mid-market/enterprise</td><td>~$15–25+/user/mo</td><td>We're individual-first, BYO-Twilio; (note name clash)</td></tr>
+<tr><td>OpenPhone</td><td>Small teams, shared numbers</td><td>~$15–25/user/mo</td><td>We leverage existing Twilio; deeper AI-assistant tie-in</td></tr>
+<tr><td>Kixie / PhoneBurner</td><td>Power-dialing SDR teams</td><td>~$35–150/user/mo</td><td>Auto-dialer at a fraction of cost; AI transcripts included</td></tr>
+<tr><td>Twilio (raw)</td><td>Developers</td><td>Pay-as-you-go</td><td>We're the missing easy UI + AI layer on top</td></tr>
+<tr><td>Google Voice</td><td>Light individual use</td><td>~$10/user/mo</td><td>Real outbound dialer + auto-dialer + AI call intelligence</td></tr>
+</table>
+<p><b>Our wedge:</b> the only one that combines (a) bring-your-own-Twilio pricing, (b) a real auto-dialer, and (c) AI call analysis through a one-click assistant link — aimed at an individual buyer.</p>
+
+<h2>9. Business model &amp; pricing</h2>
+<ul>
+<li><b>Free 7-day trial</b> — no card required. Local calling works.</li>
+<li><b>$9 / month</b> after trial — unlocks cloud sync + the AI/Claude connector.</li>
+<li><b>Payment processor:</b> Dodo Payments (merchant-of-record; handles tax/VAT). Net ≈ <span class="kpi">$8.05</span> per $9 after fees (~10.5%).</li>
+<li><b>Cost to deliver:</b> near-zero infra (users pay their own Twilio + transcription). Backend is lightweight.</li>
+</ul>
+<div class="callout"><b>Pricing posture:</b> at this stage, keep $9 and focus on volume + activation, not price changes. With ~1 paying user there is no statistical basis to re-price. Consider an annual plan (e.g. ~$90/yr) for upfront cash &amp; lower churn once there are more payers.</div>
+
+<h2>10. Current traction &amp; metrics (honest)</h2>
+<table>
+<tr><th>Metric</th><th>Value</th><th>Note</th></tr>
+<tr><td>Chrome installs (lifetime)</td><td>27</td><td>Includes inactive installs</td></tr>
+<tr><td>Weekly active users</td><td>~6</td><td>De-duplicated active installs</td></tr>
+<tr><td>Activated users (made ≥1 synced call)</td><td>6</td><td>Heavy usage: call counts up to 89, 53, 41</td></tr>
+<tr><td>Paying subscribers</td><td>~1 real (+1 owner)</td><td>Plus a few on trial</td></tr>
+<tr><td>Store impressions</td><td>166 (83 on launch-push day)</td><td>Driven by a Reddit post (~7,000 views)</td></tr>
+<tr><td>Listing page views</td><td>71 (35 on push day)</td><td>~43% impression→pageview</td></tr>
+<tr><td>Geography / OS / language</td><td>US 83% · Windows 67% · English 71%</td><td>Clear primary market signal</td></tr>
+<tr><td>Uninstalls</td><td>2</td><td>Low</td></tr>
+</table>
+<p><b>Read:</b> tiny but real. The people who get through setup use it <i>heavily</i> — strong signal that the product delivers value once activated. The bottleneck is getting more people in and through setup, not the product itself.</p>
+
+<h2>11. Activation funnel &amp; known problems</h2>
+<p>Funnel from store to value:</p>
+<table>
+<tr><th>Stage</th><th>Roughly</th><th>Where it leaks</th></tr>
+<tr><td>Store impressions</td><td>166</td><td>—</td></tr>
+<tr><td>Page views</td><td>71</td><td>Listing convinces ~moderately</td></tr>
+<tr><td>Installs</td><td>27</td><td>—</td></tr>
+<tr><td>Activated (first call)</td><td>6</td><td><b>Biggest leak (~76% of installs never activate)</b></td></tr>
+<tr><td>Using transcripts (AI value)</td><td>very few</td><td><b>Second leak: AI feature rarely switched on</b></td></tr>
+<tr><td>Paid</td><td>~1</td><td>—</td></tr>
+</table>
+<h3>Two confirmed problems</h3>
+<ol>
+<li><b>The setup wall.</b> Needing Twilio + pasting credentials stops most installs before the first call. No instant "it works" moment after install.</li>
+<li><b>The AI feature is under-adopted.</b> The transcription/AI layer — the actual differentiator and the reason to pay — requires an extra optional step most users skip, so they never feel the magic that justifies $9/mo.</li>
+</ol>
+
+<h2>12. Growth opportunities (where to focus)</h2>
+<h3>Acquisition (more installs)</h3>
+<ul>
+<li>Communities where solo cold-callers &amp; Twilio users gather (Reddit r/sales, r/twilio, indie-hacker and SDR communities) — the launch Reddit post already proved this channel works.</li>
+<li>Content/SEO around "cheap Twilio softphone", "Twilio dialer chrome extension", "auto dialer for Twilio", "AI call notes" — but fix the name clash first.</li>
+<li>A short demo video showing: install → first call → transcript → ask AI. The "wow" in 60 seconds.</li>
+</ul>
+<h3>Activation (installs → first call)</h3>
+<ul>
+<li>Make the first call effortless and guaranteed (guided first call ending in a transcript users can see).</li>
+<li>Lower or soften the Twilio setup wall; reduce credential-paste anxiety.</li>
+<li>Surface the AI value early so people reach the reason-to-pay sooner.</li>
+</ul>
+<h3>Monetization (activate → paid)</h3>
+<ul>
+<li>Tie the paywall to the moment of clearest value (after they see an AI call summary).</li>
+<li>Add an annual plan for cash &amp; retention.</li>
+<li>Talk to the heavy users (89/53/41 calls) — learn what they'd pay more for.</li>
+</ul>
+
+<h2>13. Roadmap (indicative)</h2>
+<table>
+<tr><th>Horizon</th><th>Focus</th><th>Examples</th></tr>
+<tr><td>Now</td><td>Activation &amp; measurement</td><td>Smoother onboarding, guaranteed first call, funnel analytics in place</td></tr>
+<tr><td>Next</td><td>AI value front-and-center</td><td>Make transcripts/AI easier to enable; in-app call summaries; sharper paywall timing</td></tr>
+<tr><td>Later</td><td>Reach &amp; team use</td><td>Distinct brand/name, demo content, light multi-user, deeper CRM links</td></tr>
+</table>
+
+<h2>14. Brand &amp; voice</h2>
+<ul>
+<li><b>Tone:</b> direct, practical, a little technical, no corporate fluff. Speaks to people who do the work themselves.</li>
+<li><b>Promise:</b> serious calling power + AI memory, without enterprise pricing or lock-in.</li>
+<li><b>Proof points to lean on:</b> bring-your-own-Twilio cost story; AI-via-one-link; runs in the browser; data stays in your accounts.</li>
+<li><b>Open brand question:</b> the product name overlaps a major competitor — resolve before scaling marketing/SEO.</li>
+</ul>
+
+<h2>15. Risks &amp; constraints</h2>
+<table>
+<tr><th>Risk</th><th>Impact</th><th>Mitigation direction</th></tr>
+<tr><td>Setup wall blocks activation</td><td>High — caps all growth</td><td>Onboarding overhaul; reduce friction; guaranteed first call</td></tr>
+<tr><td>Name clash with "Dialpad"</td><td>Med — SEO/discovery/legal</td><td>Rebrand store listing &amp; marketing name</td></tr>
+<tr><td>Dependence on user's Twilio</td><td>Med — narrows market</td><td>Long-term: optional managed/hosted calling tier</td></tr>
+<tr><td>Single-founder bandwidth</td><td>Med</td><td>Prioritize the one leak that matters (activation)</td></tr>
+<tr><td>Tiny sample size</td><td>Med — easy to over-read</td><td>Don't over-optimize on n≈1; grow volume first</td></tr>
+</table>
+
+<h2>16. Quick facts (appendix)</h2>
+<div class="grid2">
+<div>
+<h3>Product</h3>
+<ul class="small">
+<li>Name: Twilio Dialpad (rebrand candidate)</li>
+<li>Type: Chrome extension (Manifest V3), side panel</li>
+<li>Current version: 1.2.0</li>
+<li>Platforms: Chrome on Windows / Mac / ChromeOS</li>
+<li>Calling: WebRTC via your own Twilio account</li>
+</ul>
+</div>
+<div>
+<h3>Business</h3>
+<ul class="small">
+<li>Pricing: 7-day free trial → $9/mo</li>
+<li>Net per sub: ≈ $8.05 (Dodo, ~10.5% fee)</li>
+<li>Channel: Chrome Web Store</li>
+<li>Publisher: SaaSByMohd</li>
+<li>Stage: early validation, pre-PMF</li>
+</ul>
+</div>
+</div>
+<h3>Feature checklist (current)</h3>
+<p class="small">
+Side-panel dialpad · inbound + outbound calls · mute / DTMF / hangup · call history · auto-reconnect &amp; token refresh ·
+one-click Twilio setup wizard · auto-dialer (list power-dialing) · live transcription (optional) · AI/Claude connector link ·
+HubSpot contact lookup · transcript export · 7-day trial &amp; subscription.
+</p>
+
+<h2>17. Starter questions to ask an AI with this doc</h2>
+<ul>
+<li>"Act as my growth lead. Rank the 3 highest-impact things to lift installs and activation this month."</li>
+<li>"Write 10 Chrome Web Store listing titles/subtitles that improve install conversion and avoid the Dialpad name clash."</li>
+<li>"Draft a 60-second demo-video script that hits the first-call + AI-transcript wow moment."</li>
+<li>"Create a competitor battle card vs JustCall and Aircall for a solo SDR."</li>
+<li>"Given the funnel, design a trial→paid email sequence (no spam) that lands the AI value."</li>
+<li>"Suggest 5 communities and the exact non-salesy post angle for each."</li>
+<li>"Propose 3 brand-name + tagline options that are SEO-clean and trademark-safe."</li>
+</ul>
+
+<p class="meta" style="margin-top:24px">End of document · Twilio Dialpad Product Context v1.0 · For strategic/marketing use with AI assistants.</p>
+
+</body>
+</html>
