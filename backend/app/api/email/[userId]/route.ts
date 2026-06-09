@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual, randomInt } from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { authenticateUser } from '@/lib/auth';
 
 export const runtime = 'nodejs';
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+const VERIFY_CODE_TTL_MS = 15 * 60 * 1_000;
+const VERIFY_CODE_MAX = 1_000_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -23,10 +30,8 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 function randomSixDigitCode(): string {
-  // Cryptographically random 6-digit code (000000–999999).
-  const buf = new Uint32Array(1);
-  crypto.getRandomValues(buf);
-  return String(buf[0] % 1_000_000).padStart(6, '0');
+  // Cryptographically random 6-digit code (000000–999999) — no modulo bias.
+  return String(randomInt(0, VERIFY_CODE_MAX)).padStart(6, '0');
 }
 
 /**
@@ -36,6 +41,9 @@ function randomSixDigitCode(): string {
  *   await resend.emails.send({ to: email, subject: 'Your code', text: `Code: ${code}` });
  */
 async function sendVerificationEmail(email: string, code: string): Promise<void> {
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('sendVerificationEmail not implemented — wire an email provider');
+  }
   console.log(`[email-verify] STUB — would send code ${code} to ${email}`);
 }
 
@@ -93,20 +101,37 @@ export async function POST(
     );
   }
 
+  // --- Verify user row exists before generating a code ---
+  const { data: existingRows, error: rowCheckError } = await supabase
+    .from('users')
+    .update({ email: normalizedEmail }) // minimal probe; real update follows below
+    .eq('id', userId)
+    .select('id');
+
+  if (rowCheckError) {
+    console.error('[email POST] db row-check failed', rowCheckError);
+    return NextResponse.json({ error: 'db_error' }, { status: 500, headers: corsHeaders });
+  }
+
+  if (!existingRows || existingRows.length === 0) {
+    return NextResponse.json({ error: 'User not found' }, { status: 404, headers: corsHeaders });
+  }
+
   // --- Generate verification code ---
   const code = randomSixDigitCode();
   const codeHash = sha256(code);
-  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // +15 min
+  const now = new Date().toISOString();
+  const expiresAt = new Date(Date.now() + VERIFY_CODE_TTL_MS).toISOString();
 
   // --- Build the update payload ---
   const update: Record<string, string | null> = {
     email: normalizedEmail,
-    product_email_consent_at: new Date().toISOString(),
+    product_email_consent_at: now,
     email_verified_at: null,          // re-verify whenever email changes
     email_verify_code_hash: codeHash,
     email_verify_expires_at: expiresAt,
     // marketing_consent_at: only set when explicitly opted in
-    ...(marketingConsent === true ? { marketing_consent_at: new Date().toISOString() } : {}),
+    ...(marketingConsent === true ? { marketing_consent_at: now } : {}),
   };
 
   const { error: dbError } = await supabase
