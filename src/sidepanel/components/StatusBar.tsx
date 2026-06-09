@@ -105,7 +105,7 @@ export function StatusBar() {
           <button
             type="button"
             onClick={() => setView('pro')}
-            className="text-xs text-brand-700 hover:text-brand-900 hover:underline text-left"
+            className="text-xs text-brand-700 hover:text-brand-800 hover:underline text-left"
           >
             Pro trial — {trialSub.daysLeft} day{trialSub.daysLeft === 1 ? '' : 's'} left
           </button>
