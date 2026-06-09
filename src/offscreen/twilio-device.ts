@@ -7,6 +7,11 @@ import { DeepgramSession } from '@shared/deepgram';
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
 const REGISTER_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
 
+/** Resolve after `ms` milliseconds. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 interface FetchTokenResult { token: string; identity: string; }
 
 async function fetchToken(functionUrl: string, identity: string): Promise<string> {
@@ -100,6 +105,8 @@ class TranscriptionController {
   private mixed: MixedStream | null = null;
   private segments: TranscriptSegment[] = [];
   private startedAt = 0;
+  /** Set when the call ends before streams were ready — cancels an in-flight waitForStreams. */
+  private cancelled = false;
 
   async start(
     call: Call,
@@ -107,35 +114,44 @@ class TranscriptionController {
     direction: 'in' | 'out',
     remoteNumber: string,
     apiKey: string,
+    model?: string,
   ): Promise<void> {
-    // Twilio Voice SDK 2.x exposes both audio tracks at this point.
+    // Twilio Voice SDK 2.x attaches the WebRTC audio tracks asynchronously —
+    // they are frequently NOT ready in the same tick the 'accept' event fires.
+    // Reading them once here (the old behaviour) threw → was swallowed → the
+    // transcript silently never started. Poll briefly instead. Non-fatal.
     type CallWithStreams = Call & {
       getLocalStream?: () => MediaStream | undefined | null;
       getRemoteStream?: () => MediaStream | undefined | null;
     };
     const c = call as CallWithStreams;
-    const local = c.getLocalStream?.();
-    const remote = c.getRemoteStream?.();
-    console.log('[transcription] start', {
-      hasLocal: !!local,
-      hasRemote: !!remote,
-      localTracks: local?.getAudioTracks().length,
-      remoteTracks: remote?.getAudioTracks().length,
+
+    const streams = await this.waitForStreams(c);
+    if (!streams) {
+      // Timed out, or the call ended before audio was ready. Don't raise a hard
+      // error for a cancelled call; surface a soft error only on real timeout.
+      if (!this.cancelled) {
+        console.warn('[transcription] audio streams not ready before timeout — skipping transcription');
+        _transcriptErrorCb?.(
+          new Error('Twilio audio streams not ready (timed out). Transcription skipped for this call.'),
+        );
+      }
+      // Still record meta so finalize() is a clean no-op.
+      this._meta = { callSid, direction, remoteNumber };
+      return;
+    }
+    const { local, remote } = streams;
+    console.log('[transcription] streams ready', {
+      localTracks: local.getAudioTracks().length,
+      remoteTracks: remote.getAudioTracks().length,
     });
-    if (!local || !remote) {
-      throw new Error(
-        `Twilio audio streams missing (local=${!!local} remote=${!!remote}). Cannot transcribe.`,
-      );
-    }
-    if (local.getAudioTracks().length === 0 || remote.getAudioTracks().length === 0) {
-      throw new Error('Twilio audio tracks empty. Cannot transcribe.');
-    }
 
     this.startedAt = Date.now();
     this.mixed = mixToStereo(local, remote);
 
     this.session = new DeepgramSession({
       apiKey,
+      model,
       startedAt: this.startedAt,
       onSegment: (seg) => {
         if (seg.isFinal) this.segments.push(seg);
@@ -163,9 +179,46 @@ class TranscriptionController {
     this._meta = { callSid, direction, remoteNumber };
   }
 
+  /**
+   * Poll for ready local + remote audio streams. Twilio attaches tracks a few
+   * hundred ms after 'accept'. Returns the streams once both have audio tracks,
+   * or null on timeout / cancellation (call ended early).
+   */
+  private async waitForStreams(
+    c: {
+      getLocalStream?: () => MediaStream | undefined | null;
+      getRemoteStream?: () => MediaStream | undefined | null;
+    },
+    timeoutMs = 3000,
+    intervalMs = 200,
+  ): Promise<{ local: MediaStream; remote: MediaStream } | null> {
+    const deadline = Date.now() + timeoutMs;
+    let lastLogged = '';
+    while (Date.now() < deadline) {
+      if (this.cancelled) return null;
+      const local = c.getLocalStream?.();
+      const remote = c.getRemoteStream?.();
+      const ready =
+        !!local &&
+        !!remote &&
+        local.getAudioTracks().length > 0 &&
+        remote.getAudioTracks().length > 0;
+      const state = `local=${!!local} remote=${!!remote}`;
+      if (state !== lastLogged) {
+        console.log('[transcription] waiting for streams', state);
+        lastLogged = state;
+      }
+      if (ready) return { local: local as MediaStream, remote: remote as MediaStream };
+      await sleep(intervalMs);
+    }
+    return null;
+  }
+
   private _meta: { callSid: string; direction: 'in' | 'out'; remoteNumber: string } | null = null;
 
   async finalize(): Promise<void> {
+    // Cancel any in-flight waitForStreams (call ended before audio was ready).
+    this.cancelled = true;
     const meta = this._meta;
     const endedAt = Date.now();
     try {
@@ -266,12 +319,13 @@ export class DeviceManager {
 
       // Start transcription IFF Deepgram key configured. Failure is non-fatal.
       const apiKey = this.settings?.deepgramApiKey;
+      const model = this.settings?.deepgramModel;
       const callSid = call.parameters.CallSid ?? '';
       const remoteNumber = (call.parameters.From ?? call.parameters.To ?? '') as string;
       if (apiKey && callSid) {
         this.transcription = new TranscriptionController();
         this.transcription
-          .start(call, callSid, direction, remoteNumber, apiKey)
+          .start(call, callSid, direction, remoteNumber, apiKey, model)
           .catch((e) => {
             console.warn('[transcription] start failed', e);
             this.transcription = null;

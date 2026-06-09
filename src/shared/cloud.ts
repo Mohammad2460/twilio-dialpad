@@ -8,7 +8,6 @@
  * - Idempotent: upsert on server side so retries are safe
  */
 import type { CallRecord, Transcript } from './types';
-import { storage } from './storage';
 
 const BASE_URL = 'https://dialler-mcp.vercel.app';
 
@@ -31,30 +30,13 @@ export interface CloudAccount {
  * Throws if no Twilio settings exist yet (caller should run wizard first).
  */
 export async function ensureCloudAccount(): Promise<CloudAccount> {
-  // Check cache first
+  // Cached account (set by registerDevice during provisioning, or a legacy
+  // install). We no longer mint accounts here via the SID-only path — that was
+  // the forgeable hole. Account creation now happens only in registerDevice()
+  // behind genuine Twilio ownership verification (Phase 0b).
   const cached = await getStoredAccount();
   if (cached) return cached;
-
-  // Read Twilio SID from settings — required for dedup.
-  // Without it, registration is deferred until the wizard finishes.
-  const settings = await storage.getSettings();
-  if (!settings?.accountSid) {
-    throw new Error('twilio_not_configured');
-  }
-
-  // First install — register with backend (or recover existing row by SID).
-  const res = await fetch(`${BASE_URL}/api/users`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ twilioAccountSid: settings.accountSid }),
-  });
-  if (!res.ok) throw new Error(`[cloud] register failed: ${res.status}`);
-
-  const data = (await res.json()) as { userId: string; mcpUrl: string };
-  const account: CloudAccount = { userId: data.userId, mcpUrl: data.mcpUrl };
-
-  await chrome.storage.local.set({ cloudUserId: account.userId, cloudMcpUrl: account.mcpUrl });
-  return account;
+  throw new Error('device_not_registered');
 }
 
 async function getStoredAccount(): Promise<CloudAccount | null> {
@@ -63,6 +45,66 @@ async function getStoredAccount(): Promise<CloudAccount | null> {
     return { userId: cloudUserId, mcpUrl: cloudMcpUrl };
   }
   return null;
+}
+
+/**
+ * Register THIS device with genuine Twilio ownership proof (Phase 0b).
+ * Sends accountSid + authToken (verified server-side against Twilio, then
+ * discarded — never stored) and receives a per-device secret stored locally.
+ * Call from the provisioning wizard / "secure this device" migration, where
+ * the Auth Token is available in memory.
+ */
+export async function registerDevice(opts: {
+  accountSid: string;
+  authToken: string;
+  functionUrl?: string;
+  configSecret?: string;
+  label?: string;
+}): Promise<CloudAccount> {
+  const res = await fetch(`${BASE_URL}/api/devices/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) throw new Error(`[cloud] device register failed: ${res.status}`);
+  const data = (await res.json()) as {
+    userId: string;
+    deviceId: string;
+    deviceSecret: string;
+    mcpUrl: string;
+  };
+  await chrome.storage.local.set({
+    cloudUserId: data.userId,
+    cloudMcpUrl: data.mcpUrl,
+    cloudDeviceId: data.deviceId,
+    cloudDeviceSecret: data.deviceSecret,
+  });
+  return { userId: data.userId, mcpUrl: data.mcpUrl };
+}
+
+/** True once this device has a per-device secret (i.e. is migrated to Phase 0b auth). */
+export async function isDeviceRegistered(): Promise<boolean> {
+  const { cloudDeviceId, cloudDeviceSecret } = await chrome.storage.local.get([
+    'cloudDeviceId',
+    'cloudDeviceSecret',
+  ]);
+  return typeof cloudDeviceId === 'string' && typeof cloudDeviceSecret === 'string';
+}
+
+/**
+ * Authorization header for private backend calls.
+ * Device bearer `<deviceId>.<secret>` when registered; otherwise the legacy
+ * bare `<userId>` (accepted only during the backend migration window).
+ */
+async function authHeader(userId: string): Promise<string> {
+  const { cloudDeviceId, cloudDeviceSecret } = await chrome.storage.local.get([
+    'cloudDeviceId',
+    'cloudDeviceSecret',
+  ]);
+  if (typeof cloudDeviceId === 'string' && typeof cloudDeviceSecret === 'string') {
+    return `Bearer ${cloudDeviceId}.${cloudDeviceSecret}`;
+  }
+  return `Bearer ${userId}`;
 }
 
 // ── call sync ────────────────────────────────────────────────────
@@ -96,14 +138,17 @@ export function syncCallToCloud(
       : undefined,
   };
 
-  fetch(`${BASE_URL}/api/calls/${userId}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${userId}`,
-    },
-    body: JSON.stringify(payload),
-  })
+  authHeader(userId)
+    .then((auth) =>
+      fetch(`${BASE_URL}/api/calls/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: auth,
+        },
+        body: JSON.stringify(payload),
+      }),
+    )
     .then((res) => {
       // Surface 402 (subscription expired) to options page via local flag.
       if (res.status === 402) {
@@ -134,7 +179,7 @@ export interface Subscription {
 export async function getSubscription(userId: string): Promise<Subscription | null> {
   try {
     const res = await fetch(`${BASE_URL}/api/subscription/${userId}`, {
-      headers: { Authorization: `Bearer ${userId}` },
+      headers: { Authorization: await authHeader(userId) },
     });
     if (!res.ok) return null;
     return (await res.json()) as Subscription;
@@ -150,7 +195,7 @@ export async function getSubscription(userId: string): Promise<Subscription | nu
 export async function getCheckoutUrl(userId: string): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/checkout/${userId}`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${userId}` },
+    headers: { Authorization: await authHeader(userId) },
   });
   if (!res.ok) {
     let detail = '';
@@ -179,7 +224,7 @@ export async function cancelSubscription(userId: string): Promise<{
   try {
     const res = await fetch(`${BASE_URL}/api/subscription/${userId}`, {
       method: 'DELETE',
-      headers: { Authorization: `Bearer ${userId}` },
+      headers: { Authorization: await authHeader(userId) },
     });
     if (!res.ok) {
       let detail = '';

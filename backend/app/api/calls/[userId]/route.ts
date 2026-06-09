@@ -3,6 +3,9 @@ import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { IngestCallSchema } from '@/lib/schemas';
 import { DBCallStore } from '@/lib/db-store';
+import { authenticateUser } from '@/lib/auth';
+
+export const runtime = 'nodejs';
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
@@ -20,9 +23,7 @@ export async function POST(
   const { userId } = await params;
 
   // ── auth ────────────────────────────────────────────────────────
-  const bearer = req.headers.get('Authorization') ?? '';
-  const token = bearer.replace(/^Bearer\s+/, '');
-  if (!token || token !== userId) {
+  if (!(await authenticateUser(req, userId))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
   }
 

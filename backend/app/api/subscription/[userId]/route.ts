@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { cancelSubscription } from '@/lib/dodo';
+import { authenticateUser } from '@/lib/auth';
+
+export const runtime = 'nodejs';
 
 export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
@@ -20,9 +23,7 @@ export async function GET(
 ) {
   const { userId } = await params;
 
-  const bearer = req.headers.get('Authorization') ?? '';
-  const token = bearer.replace(/^Bearer\s+/, '');
-  if (!token || token !== userId) {
+  if (!(await authenticateUser(req, userId))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
   }
 
@@ -82,9 +83,7 @@ export async function DELETE(
 ) {
   const { userId } = await params;
 
-  const bearer = req.headers.get('Authorization') ?? '';
-  const token = bearer.replace(/^Bearer\s+/, '');
-  if (!token || token !== userId) {
+  if (!(await authenticateUser(req, userId))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
   }
 

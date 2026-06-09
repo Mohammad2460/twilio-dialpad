@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { ensureProduct, createCheckoutSession } from '@/lib/dodo';
+import { authenticateUser } from '@/lib/auth';
+
+export const runtime = 'nodejs';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
 
@@ -15,10 +18,14 @@ export async function OPTIONS() {
  * Returns { checkout_url } to redirect the user.
  */
 export async function POST(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: Promise<{ userId: string }> },
 ) {
   const { userId } = await params;
+
+  if (!(await authenticateUser(req, userId))) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
+  }
 
   // Verify user exists + check current state.
   const { data: user, error } = await supabase
