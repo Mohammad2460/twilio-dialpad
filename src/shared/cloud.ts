@@ -243,6 +243,63 @@ export async function cancelSubscription(userId: string): Promise<{
   }
 }
 
+// ── email capture ─────────────────────────────────────────────────
+
+/**
+ * Submit the user's email for product transactional emails (and optionally
+ * marketing). Returns a devCode in non-production environments for convenience.
+ * Requires productConsent: true — enforced by the backend.
+ */
+export async function setEmail(
+  userId: string,
+  opts: { email: string; productConsent: boolean; marketingConsent?: boolean },
+): Promise<{ ok: boolean; devCode?: string }> {
+  const res = await fetch(`${BASE_URL}/api/email/${userId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: await authHeader(userId),
+    },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const j = (await res.json()) as { error?: string; detail?: string };
+      detail = j.detail ?? j.error ?? '';
+    } catch {
+      /* noop */
+    }
+    throw new Error(`setEmail failed (${res.status})${detail ? `: ${detail}` : ''}`);
+  }
+  return (await res.json()) as { ok: boolean; devCode?: string };
+}
+
+/**
+ * Verify the 6-digit code sent to the user's email.
+ */
+export async function verifyEmail(userId: string, code: string): Promise<{ ok: boolean }> {
+  const res = await fetch(`${BASE_URL}/api/email/${userId}`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: await authHeader(userId),
+    },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const j = (await res.json()) as { error?: string; detail?: string };
+      detail = j.detail ?? j.error ?? '';
+    } catch {
+      /* noop */
+    }
+    throw new Error(`verifyEmail failed (${res.status})${detail ? `: ${detail}` : ''}`);
+  }
+  return { ok: res.ok };
+}
+
 // ── health check ─────────────────────────────────────────────────
 
 export async function checkCloudHealth(): Promise<boolean> {

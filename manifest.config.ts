@@ -7,7 +7,7 @@ export default defineManifest({
   version: pkg.version,
   description: 'Browser-based Twilio dialpad — make and receive calls without a phone.',
   minimum_chrome_version: '116',
-  permissions: ['storage', 'sidePanel', 'notifications', 'clipboardRead', 'tabs'],
+  permissions: ['storage', 'sidePanel', 'notifications', 'clipboardRead', 'tabs', 'identity.email'],
   host_permissions: [
     'https://api.twilio.com/*',
     'https://*.twil.io/*',
