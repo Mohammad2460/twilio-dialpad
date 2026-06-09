@@ -49,7 +49,7 @@ export function UpgradeSheet({
         <button
           type="button"
           onClick={onUpgrade}
-          disabled={loading ?? disabled}
+          disabled={!!loading || !!disabled}
           className={[
             'w-full rounded-md px-4 py-2 text-sm font-semibold text-white transition',
             loading || disabled

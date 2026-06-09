@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ensureCloudAccount,
   getSubscription,
@@ -34,8 +34,15 @@ export function ProTab() {
   const [upgradeError, setUpgradeError] = useState<string | null>(null);
 
   const [cancelLoading, setCancelLoading] = useState(false);
-  const [cancelledAt, setCancelledAt] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -88,16 +95,17 @@ export function ProTab() {
     setCancelError(null);
     try {
       const result = await cancelSubscription(userId);
+      if (!mountedRef.current) return;
       if (result.ok) {
-        setCancelledAt(result.cancelsAt ?? null);
         // Refresh subscription state
         const updated = await getSubscription(userId);
+        if (!mountedRef.current) return;
         setSub(updated);
       } else {
         setCancelError(result.error ?? 'Cancellation failed.');
       }
     } finally {
-      setCancelLoading(false);
+      if (mountedRef.current) setCancelLoading(false);
     }
   }
 
@@ -155,29 +163,20 @@ export function ProTab() {
         <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm space-y-3">
           <h2 className="text-sm font-semibold text-gray-900">Manage subscription</h2>
 
-          {cancelledAt ? (
-            <p className="text-xs text-gray-600">
-              Subscription cancelled. Access continues until{' '}
-              <span className="font-medium">{fmtDate(cancelledAt)}</span>.
-            </p>
-          ) : (
-            <>
-              <p className="text-xs text-gray-500">
-                Cancelling ends your subscription at period end — you keep access until then.
-              </p>
-              {cancelError && (
-                <p className="text-xs text-red-600">{cancelError}</p>
-              )}
-              <button
-                type="button"
-                onClick={handleCancel}
-                disabled={cancelLoading}
-                className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
-              >
-                {cancelLoading ? 'Cancelling…' : 'Cancel subscription'}
-              </button>
-            </>
+          <p className="text-xs text-gray-500">
+            Cancelling ends your subscription at period end — you keep access until then.
+          </p>
+          {cancelError && (
+            <p className="text-xs text-red-600">{cancelError}</p>
           )}
+          <button
+            type="button"
+            onClick={handleCancel}
+            disabled={cancelLoading}
+            className="rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          >
+            {cancelLoading ? 'Cancelling…' : 'Cancel subscription'}
+          </button>
         </section>
       </div>
     );
