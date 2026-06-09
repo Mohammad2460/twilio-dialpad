@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react';
-import { getEntitlements, type Entitlements, type Feature } from '@shared/entitlements';
+import {
+  getEntitlements,
+  entitlementsFromSubscription,
+  type Entitlements,
+  type Feature,
+} from '@shared/entitlements';
 import { useCallStore } from '../stores/call-store';
 
 const BENEFIT: Record<Feature, string> = {
@@ -16,12 +21,17 @@ export function PaywallGate({ feature, children }: { feature: Feature; children:
 
   useEffect(() => {
     let cancelled = false;
-    chrome.storage.local.get('cloudUserId').then((got) => {
-      const userId = (got['cloudUserId'] as string | undefined) ?? null;
-      getEntitlements(userId).then((result) => {
+    (async () => {
+      try {
+        const got = await chrome.storage.local.get('cloudUserId');
+        const userId = (got['cloudUserId'] as string | undefined) ?? null;
+        const result = await getEntitlements(userId);
         if (!cancelled) setEnt(result);
-      });
-    });
+      } catch {
+        // Never hang on the spinner — fall back to free (gated) on any error.
+        if (!cancelled) setEnt(entitlementsFromSubscription(null));
+      }
+    })();
     return () => { cancelled = true; };
   }, []);
 
