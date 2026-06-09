@@ -297,7 +297,7 @@ export async function verifyEmail(userId: string, code: string): Promise<{ ok: b
     }
     throw new Error(`verifyEmail failed (${res.status})${detail ? `: ${detail}` : ''}`);
   }
-  return { ok: res.ok };
+  return (await res.json()) as { ok: boolean };
 }
 
 // ── health check ─────────────────────────────────────────────────

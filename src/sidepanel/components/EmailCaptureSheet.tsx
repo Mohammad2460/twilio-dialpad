@@ -20,6 +20,7 @@ export function EmailCaptureSheet({ onDone }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [chromeEmailHint, setChromeEmailHint] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
 
   async function handleSkip() {
     await chrome.storage.local.set({ emailPromptSkipped: true });
@@ -52,6 +53,7 @@ export function EmailCaptureSheet({ onDone }: Props) {
     setBusy(true);
     try {
       const account = await ensureCloudAccount();
+      setUserId(account.userId);
       const result = await setEmail(account.userId, {
         email: email.trim(),
         productConsent: true,
@@ -78,8 +80,8 @@ export function EmailCaptureSheet({ onDone }: Props) {
     }
     setBusy(true);
     try {
-      const account = await ensureCloudAccount();
-      await verifyEmail(account.userId, code.trim());
+      const resolvedUserId = userId ?? (await ensureCloudAccount()).userId;
+      await verifyEmail(resolvedUserId, code.trim());
       await chrome.storage.local.set({ emailCaptured: true });
       onDone();
     } catch (e) {

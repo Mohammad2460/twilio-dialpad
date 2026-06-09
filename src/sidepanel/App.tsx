@@ -32,6 +32,8 @@ export function App() {
   // Check whether to show email capture once settings are confirmed configured
   useEffect(() => {
     if (!settings) return;
+    // Only evaluate once — guard against re-runs if settings re-emits mid-session
+    if (showEmailCapture !== null) return;
     chrome.storage.local
       .get(['emailCaptured', 'emailPromptSkipped'])
       .then(({ emailCaptured, emailPromptSkipped }) => {
