@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCallStore } from '../stores/call-store';
 import { getManager } from '../hooks/use-device';
 import { IncomingToggle } from './IncomingToggle';
+import { getSubscription, type Subscription } from '@shared/cloud';
 
 const STATE_META: Record<string, { text: string; color: string }> = {
   uninitialized: { text: 'Not initialized', color: 'bg-gray-200 text-gray-600' },
@@ -18,6 +19,9 @@ export function StatusBar() {
   const meta = STATE_META[deviceState] ?? STATE_META.uninitialized;
   const needsRetry = deviceState === 'uninitialized' || deviceState === 'offline' || deviceState === 'error';
   const cloudBlocked = useCloudSyncBlocked();
+  const trialSub = useTrialSubscription();
+  const setView = useCallStore((s) => s.setView);
+  const callCount = useCallStore((s) => s.history.length);
 
   function retryInit() {
     const s = useCallStore.getState().settings;
@@ -94,8 +98,63 @@ export function StatusBar() {
           </button>
         </div>
       )}
+
+      {/* Trial countdown — persistent compact badge when actively trialing */}
+      {trialSub && trialSub.daysLeft !== undefined && trialSub.daysLeft > 2 && (
+        <div className="bg-brand-50 border-b border-brand-100 px-3 py-1 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => setView('pro')}
+            className="text-xs text-brand-700 hover:text-brand-900 hover:underline text-left"
+          >
+            Pro trial — {trialSub.daysLeft} day{trialSub.daysLeft === 1 ? '' : 's'} left
+          </button>
+        </div>
+      )}
+
+      {/* Day 5–6 loss-aversion banner — coach tone, uses real call count */}
+      {trialSub && trialSub.daysLeft !== undefined && trialSub.daysLeft <= 2 && (
+        <div className="bg-amber-50 border-b border-amber-100 px-3 py-2 flex items-center justify-between gap-2">
+          <span className="text-xs text-amber-900 leading-snug">
+            {callCount > 0
+              ? <>You've made {callCount} call{callCount === 1 ? '' : 's'} on Pro. Keep your transcripts, AI analysis and unlimited dialing — upgrade for $9/mo.</>
+              : <>Your Pro trial ends in {trialSub.daysLeft} day{trialSub.daysLeft === 1 ? '' : 's'}. Lock in transcripts, AI analysis and unlimited dialing for $9/mo.</>
+            }
+          </span>
+          <button
+            type="button"
+            onClick={() => setView('pro')}
+            className="shrink-0 rounded bg-amber-600 px-2 py-1 text-white text-xs hover:bg-amber-700"
+          >
+            Upgrade
+          </button>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Fetches subscription on mount. Returns the Subscription only when the user
+ * is actively trialing with access; null otherwise (no banner rendered).
+ */
+function useTrialSubscription(): Subscription | null {
+  const [sub, setSub] = useState<Subscription | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    chrome.storage.local.get('cloudUserId').then(({ cloudUserId }) => {
+      if (cancelled || typeof cloudUserId !== 'string') return;
+      getSubscription(cloudUserId)
+        .then((s) => {
+          if (!cancelled && s && s.status === 'trialing' && s.hasAccess) {
+            setSub(s);
+          }
+        })
+        .catch(() => {}); // silent — never break UI
+    });
+    return () => { cancelled = true; };
+  }, []);
+  return sub;
 }
 
 /**
