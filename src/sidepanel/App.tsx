@@ -10,6 +10,7 @@ import { CallHistory } from './components/CallHistory';
 import { AutoDialer } from './components/AutoDialer';
 import { NotConfigured } from './components/NotConfigured';
 import { FolderPermissionBanner } from './components/FolderPermissionBanner';
+import { SettingsTab } from './components/SettingsTab';
 
 export function App() {
   useDevice();
@@ -38,6 +39,8 @@ export function App() {
           <CallHistory />
         ) : view === 'autodial' ? (
           <AutoDialer />
+        ) : view === 'settings' ? (
+          <SettingsTab />
         ) : (
           <Dialpad />
         )}
@@ -57,11 +60,11 @@ function Footer() {
       <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>
         Keypad
       </TabButton>
-      <TabButton active={view === 'autodial'} onClick={() => setView('autodial')}>
-        Auto-dial
-      </TabButton>
       <TabButton active={view === 'history'} onClick={() => setView('history')}>
         Recents
+      </TabButton>
+      <TabButton active={view === 'settings'} onClick={() => setView('settings')}>
+        Settings
       </TabButton>
     </nav>
   );

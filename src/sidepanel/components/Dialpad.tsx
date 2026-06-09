@@ -19,6 +19,7 @@ export function Dialpad() {
   const selectedCallerId = useCallStore((s) => s.selectedCallerId);
   const setSelectedCallerIdStore = useCallStore((s) => s.setSelectedCallerId);
   const setCallerIdsStore = useCallStore((s) => s.setCallerIds);
+  const setView = useCallStore((s) => s.setView);
   const ready = deviceState === 'registered';
 
   // Paste-to-dial — only show chip when input is empty.
@@ -134,6 +135,21 @@ export function Dialpad() {
 
   return (
     <div className="flex h-full flex-col p-4">
+
+      {/* ── Auto-dial entry ── */}
+      <div className="mb-1 flex justify-end">
+        <button
+          type="button"
+          onClick={() => setView('autodial')}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
+          title="Open the auto-dialer"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+            <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+          </svg>
+          Auto-dial
+        </button>
+      </div>
 
       {/* ── Caller ID Picker ── */}
       {callerIds.length > 0 && (
