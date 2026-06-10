@@ -3,9 +3,9 @@ import pkg from './package.json';
 
 export default defineManifest({
   manifest_version: 3,
-  name: 'Twilio Dialpad',
+  name: 'Twilio Dialer – Click to Call Softphone',
   version: pkg.version,
-  description: 'Browser-based Twilio dialpad — make and receive calls without a phone.',
+  description: 'Twilio dialer & softphone for Chrome — click to call, live transcripts, auto-dial, and HubSpot screen-pops. Bring your own Twilio.',
   minimum_chrome_version: '116',
   permissions: ['storage', 'sidePanel', 'notifications', 'clipboardRead', 'tabs', 'identity', 'identity.email', 'scripting'],
   // Broad page access is OPTIONAL — requested at runtime only when the user
@@ -33,7 +33,7 @@ export default defineManifest({
   // is registered programmatically only on user-granted origins (see
   // src/shared/bubble-perms.ts), avoiding a broad-host install warning.
   action: {
-    default_title: 'Twilio Dialpad',
+    default_title: 'Twilio Dialer – Click to Call Softphone',
     default_icon: {
       '16': 'public/icons/icon-16.png',
       '32': 'public/icons/icon-32.png',
