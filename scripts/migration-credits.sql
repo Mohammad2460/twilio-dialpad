@@ -392,6 +392,27 @@ END;
 $$;
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- reap_stale_reservations — refund reservations stuck 'pending' past a threshold
+-- (serverless instance died after reserve but before settle/refund). refund is
+-- idempotent on reservation status, so this never double-refunds. Run on a cron.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION reap_stale_reservations(p_minutes INTEGER DEFAULT 30)
+RETURNS INTEGER LANGUAGE plpgsql AS $$
+DECLARE n INTEGER := 0; r RECORD;
+BEGIN
+  FOR r IN
+    SELECT request_id FROM credit_ledger
+    WHERE kind = 'reservation' AND status = 'pending'
+      AND created_at < now() - make_interval(mins => p_minutes)
+  LOOP
+    PERFORM refund_credits(r.request_id, 0, NULL);
+    n := n + 1;
+  END LOOP;
+  RETURN n;
+END;
+$$;
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Seed pricing_config v1 (P8.0 safe conservative defaults — VERIFY vendor rates
 -- live at build; tune N + free_grant from real burn post-launch).
 -- Rates are USD per 1M tokens (LLM) / USD per minute per channel (Deepgram).
