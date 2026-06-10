@@ -7,7 +7,7 @@ interface CallStore {
   settings: Settings | null;
   activeCall: ActiveCall | null;
   history: CallRecord[];
-  view: 'dialpad' | 'history' | 'autodial' | 'settings' | 'pro';
+  view: 'dialpad' | 'history' | 'autodial' | 'settings' | 'pro' | 'sms';
   callerIds: string[];
   selectedCallerId: string;
 
@@ -16,7 +16,7 @@ interface CallStore {
   setActiveCall: (c: ActiveCall | null) => void;
   patchActiveCall: (p: Partial<ActiveCall>) => void;
   setHistory: (h: CallRecord[]) => void;
-  setView: (v: 'dialpad' | 'history' | 'autodial' | 'settings' | 'pro') => void;
+  setView: (v: 'dialpad' | 'history' | 'autodial' | 'settings' | 'pro' | 'sms') => void;
   setCallerIds: (ids: string[]) => void;
   setSelectedCallerId: (id: string) => void;
 

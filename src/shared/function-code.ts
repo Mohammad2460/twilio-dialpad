@@ -235,3 +235,71 @@ exports.handler = async function (context, event, callback) {
   }
 };
 `.trim();
+
+export const SMS_JS = `
+/**
+ * Outbound SMS sender. Called by our backend (which holds the decrypted
+ * configSecret). Auth: event.secret === CONFIG_SECRET. Sends via the Twilio
+ * Messages API using the API Key SID/Secret already in env (no Auth Token).
+ */
+exports.handler = async function (context, event, callback) {
+  const res = new Twilio.Response();
+  res.appendHeader('Access-Control-Allow-Origin', '*');
+  res.appendHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.appendHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.appendHeader('Content-Type', 'application/json');
+  try {
+    if (!event.secret || event.secret !== context.CONFIG_SECRET) {
+      res.setStatusCode(401); res.setBody({ ok: false, error: 'unauthorized' }); return callback(null, res);
+    }
+    const to = (event.To || '').toString().trim();
+    const body = (event.Body || '').toString();
+    const from = (context.CALLER_ID || '').toString().trim();
+    if (!to || !body) { res.setStatusCode(400); res.setBody({ ok: false, error: 'missing To/Body' }); return callback(null, res); }
+    if (!from) { res.setStatusCode(500); res.setBody({ ok: false, error: 'no CALLER_ID configured' }); return callback(null, res); }
+    const auth = Buffer.from(context.API_KEY_SID + ':' + context.API_KEY_SECRET).toString('base64');
+    const params = new URLSearchParams({ To: to, From: from, Body: body });
+    const r = await fetch('https://api.twilio.com/2010-04-01/Accounts/' + context.ACCOUNT_SID + '/Messages.json', {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await r.json();
+    if (!r.ok) { res.setStatusCode(502); res.setBody({ ok: false, error: (data && data.message) || ('send failed ' + r.status) }); return callback(null, res); }
+    res.setBody({ ok: true, sid: data.sid, from: from });
+    return callback(null, res);
+  } catch (e) {
+    res.setStatusCode(500); res.setBody({ ok: false, error: String((e && e.message) || e) }); return callback(null, res);
+  }
+};
+`.trim();
+
+export const INCOMING_SMS_JS = `
+/**
+ * Inbound SMS webhook. Deploy with PROTECTED visibility so Twilio validates the
+ * X-Twilio-Signature before this runs (we never handle the Auth Token).
+ * Forwards the message to our backend for storage (auth = shared CONFIG_SECRET).
+ */
+exports.handler = async function (context, event, callback) {
+  const from = (event.From || '').toString();
+  const to = (event.To || '').toString();
+  const body = (event.Body || '').toString();
+  const messageSid = (event.MessageSid || event.SmsSid || '').toString();
+  const twiml = new Twilio.twiml.MessagingResponse();
+  try {
+    await fetch((context.BACKEND_URL || 'https://dialler-mcp.vercel.app') + '/api/sms/inbound', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountSid: context.ACCOUNT_SID, from: from, to: to, body: body, messageSid: messageSid, secret: context.CONFIG_SECRET }),
+    });
+  } catch (e) {
+    console.error('[incoming-sms] forward failed', e);
+  }
+  // Compliance: Twilio Advanced Opt-Out handles STOP/START/HELP at the account
+  // level. Provide a HELP reply as a fallback.
+  if (body.trim().toUpperCase() === 'HELP') {
+    twiml.message('Reply STOP to unsubscribe. Msg & data rates may apply.');
+  }
+  return callback(null, twiml);
+};
+`.trim();

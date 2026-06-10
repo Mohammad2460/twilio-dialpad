@@ -12,6 +12,7 @@ import { NotConfigured } from './components/NotConfigured';
 import { FolderPermissionBanner } from './components/FolderPermissionBanner';
 import { SettingsTab } from './components/SettingsTab';
 import { ProTab } from './components/ProTab';
+import { SmsTab } from './components/SmsTab';
 import { EmailCaptureSheet } from './components/EmailCaptureSheet';
 
 export function App() {
@@ -60,6 +61,8 @@ export function App() {
           <CallScreen />
         ) : view === 'history' ? (
           <CallHistory />
+        ) : view === 'sms' ? (
+          <SmsTab />
         ) : view === 'autodial' ? (
           <AutoDialer />
         ) : view === 'settings' ? (
@@ -84,6 +87,9 @@ function Footer() {
     <nav className="flex border-t border-gray-200 bg-white">
       <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>
         Keypad
+      </TabButton>
+      <TabButton active={view === 'sms'} onClick={() => setView('sms')}>
+        SMS
       </TabButton>
       <TabButton active={view === 'history'} onClick={() => setView('history')}>
         Recents

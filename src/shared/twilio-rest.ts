@@ -114,6 +114,20 @@ export const twilio = {
     );
   },
 
+  async setNumberSmsUrl(
+    sid: string,
+    token: string,
+    numberSid: string,
+    smsUrl: string,
+  ): Promise<IncomingPhoneNumber> {
+    return twilioFetch<IncomingPhoneNumber>(
+      `/Accounts/${sid}/IncomingPhoneNumbers/${numberSid}.json`,
+      sid,
+      token,
+      { method: 'POST', form: { SmsUrl: smsUrl, SmsMethod: 'POST' } },
+    );
+  },
+
 };
 
 // ────────────────────────────────────────────────────────────────
@@ -180,6 +194,15 @@ export const serverless = {
     });
   },
 
+  async listFunctions(sid: string, token: string, serviceSid: string): Promise<SlsFunction[]> {
+    const json = await slsFetch<{ functions: SlsFunction[] }>(
+      `/Services/${serviceSid}/Functions?PageSize=100`,
+      sid,
+      token,
+    );
+    return json.functions ?? [];
+  },
+
   async uploadFunctionVersion(
     sid: string,
     token: string,
@@ -187,10 +210,11 @@ export const serverless = {
     functionSid: string,
     path: string,
     code: string,
+    visibility: 'public' | 'protected' | 'private' = 'public',
   ): Promise<SlsFunctionVersion> {
     const body = new FormData();
     body.append('Path', path);
-    body.append('Visibility', 'public');
+    body.append('Visibility', visibility);
     body.append('Content', new Blob([code], { type: 'application/javascript' }), 'fn.js');
     const res = await fetch(
       `${SLS_UPLOAD}/Services/${serviceSid}/Functions/${functionSid}/Versions`,
@@ -393,4 +417,89 @@ function sleep(ms: number) {
 export function maskSid(sid: string): string {
   if (sid.length < 6) return '***';
   return `${sid.slice(0, 2)}***${sid.slice(-4)}`;
+}
+
+// ────────────────────────────────────────────────────────────────
+// SMS add-on provisioning — deploy /sms + /incoming-sms onto an
+// already-provisioned service, then wire the number's Messaging webhook.
+// One-time Auth Token (passed in, never stored). Idempotent.
+// ────────────────────────────────────────────────────────────────
+
+export type SmsProvisionStep =
+  | 'list' | 'create-fns' | 'set-env' | 'upload' | 'build' | 'deploy' | 'wire-number' | 'done';
+
+export async function provisionMessagingAddon(
+  accountSid: string,
+  authToken: string,
+  opts: { serviceSid: string; environmentSid: string; functionUrl: string; callerId: string },
+  onProgress?: (s: SmsProvisionStep) => void,
+): Promise<void> {
+  const { serviceSid, environmentSid, functionUrl, callerId } = opts;
+  if (!serviceSid || !environmentSid || !functionUrl) {
+    throw new Error('SMS needs a full re-run of setup (missing service/env/function URL).');
+  }
+  const p = (s: SmsProvisionStep) => onProgress?.(s);
+
+  const { TOKEN_JS, VOICE_JS, INCOMING_JS, CONFIG_JS, SMS_JS, INCOMING_SMS_JS } = await import('./function-code');
+
+  p('list');
+  const existing = await serverless.listFunctions(accountSid, authToken, serviceSid);
+  const byPath = new Map(existing.map((f) => [f.friendly_name, f.sid]));
+  const ensureFn = async (path: string): Promise<string> => {
+    const found = byPath.get(path);
+    if (found) return found;
+    const created = await serverless.createFunction(accountSid, authToken, serviceSid, path);
+    byPath.set(path, created.sid);
+    return created.sid;
+  };
+
+  p('create-fns');
+  const fnToken = await ensureFn('/token');
+  const fnVoice = await ensureFn('/voice');
+  const fnIncoming = await ensureFn('/incoming');
+  const fnConfig = await ensureFn('/config');
+  const fnSms = await ensureFn('/sms');
+  const fnIncomingSms = await ensureFn('/incoming-sms');
+
+  p('set-env');
+  // /incoming-sms forwards inbound messages here.
+  await serverless
+    .setVariable(accountSid, authToken, serviceSid, environmentSid, 'BACKEND_URL', 'https://dialler-mcp.vercel.app')
+    .catch(() => undefined);
+
+  p('upload');
+  // Re-upload ALL functions (a Twilio build is the full live set) from current source.
+  const vToken = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnToken, '/token', TOKEN_JS);
+  const vVoice = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnVoice, '/voice', VOICE_JS);
+  const vIncoming = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnIncoming, '/incoming', INCOMING_JS);
+  const vConfig = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnConfig, '/config', CONFIG_JS);
+  const vSms = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnSms, '/sms', SMS_JS);
+  const vIncomingSms = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnIncomingSms, '/incoming-sms', INCOMING_SMS_JS, 'protected');
+
+  const versionSids = [vToken, vVoice, vIncoming, vConfig, vSms, vIncomingSms].map((v) => v.sid);
+  if (versionSids.some((s) => !s)) throw new Error('Function upload returned an empty version SID.');
+
+  p('build');
+  const build = await serverless.triggerBuild(accountSid, authToken, serviceSid, versionSids);
+  let status = build.status;
+  let attempts = 0;
+  while (status === 'building' && attempts < 24) {
+    await sleep(5000);
+    attempts++;
+    const b = await serverless.getBuild(accountSid, authToken, serviceSid, build.sid);
+    status = b.status;
+  }
+  if (status !== 'completed') throw new Error(`SMS build ${status} — check Twilio Functions logs.`);
+
+  p('deploy');
+  await serverless.deploy(accountSid, authToken, serviceSid, environmentSid, build.sid);
+
+  p('wire-number');
+  const numbers = await twilio.listPhoneNumbers(accountSid, authToken);
+  const match = numbers.find((n) => n.phone_number === callerId);
+  if (match) {
+    await twilio.setNumberSmsUrl(accountSid, authToken, match.sid, `${functionUrl}/incoming-sms`);
+  }
+
+  p('done');
 }

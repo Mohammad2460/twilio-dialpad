@@ -96,7 +96,7 @@ export async function isDeviceRegistered(): Promise<boolean> {
  * Device bearer `<deviceId>.<secret>` when registered; otherwise the legacy
  * bare `<userId>` (accepted only during the backend migration window).
  */
-async function authHeader(userId: string): Promise<string> {
+export async function authHeader(userId: string): Promise<string> {
   const { cloudDeviceId, cloudDeviceSecret } = await chrome.storage.local.get([
     'cloudDeviceId',
     'cloudDeviceSecret',

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCallStore } from '../stores/call-store';
 import { storage } from '@shared/storage';
 import type { Settings } from '@shared/types';
-import { maskSid } from '@shared/twilio-rest';
+import { maskSid, provisionMessagingAddon } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount } from '@shared/cloud';
 
@@ -32,6 +32,7 @@ export function SettingsTab() {
 
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
       <AISection settings={settings} onUpdate={update} />
+      <EnableSmsSection settings={settings} />
       <ExtensionPrefsSection settings={settings} onUpdate={update} />
       <AccountSection settings={settings} />
       <HelpSection />
@@ -303,6 +304,62 @@ function AccountSection({ settings }: { settings: Settings }) {
           Sign out
         </button>
       </div>
+    </Section>
+  );
+}
+
+function EnableSmsSection({ settings }: { settings: Settings }) {
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const canProvision = !!(settings.serviceSid && settings.environmentSid && settings.functionUrl);
+
+  async function enable() {
+    if (!canProvision) {
+      setStatus('SMS needs a full re-run of setup (open Full settings → Reconfigure).');
+      return;
+    }
+    const token = window.prompt(
+      'Enter your Twilio Auth Token once to enable SMS.\nIt is used only to deploy the messaging function and is never stored.',
+    );
+    if (!token || !token.trim()) return;
+    setBusy(true);
+    setStatus('Deploying SMS…');
+    try {
+      await provisionMessagingAddon(
+        settings.accountSid,
+        token.trim(),
+        {
+          serviceSid: settings.serviceSid as string,
+          environmentSid: settings.environmentSid as string,
+          functionUrl: settings.functionUrl,
+          callerId: settings.defaultCallerId,
+        },
+        (s) => setStatus(`Deploying SMS — ${s}…`),
+      );
+      setStatus('✓ SMS enabled. Text prospects from the SMS tab.');
+    } catch (e) {
+      setStatus('Failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section title="SMS (Pro)">
+      <p className="text-xs text-gray-500">
+        Send & receive texts from the SMS tab. This deploys a messaging function to your own Twilio
+        account and points your number's inbound webhook at it. US senders must register their
+        number for A2P 10DLC in Twilio.
+      </p>
+      <button
+        type="button"
+        onClick={enable}
+        disabled={busy}
+        className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+      >
+        {busy ? 'Working…' : 'Enable SMS'}
+      </button>
+      {status && <p className="text-xs text-gray-600 break-words">{status}</p>}
     </Section>
   );
 }
