@@ -140,6 +140,8 @@ export async function POST(req: NextRequest) {
           const oai = new OpenAI({ apiKey });
           const completion = await oai.chat.completions.create({
             model,
+            // gpt-5 family: MUST use max_completion_tokens (not max_tokens) and
+            // MUST NOT send temperature/top_p (only defaults accepted → else 400).
             max_completion_tokens: maxOut,
             stream: true,
             stream_options: { include_usage: true },
@@ -153,6 +155,16 @@ export async function POST(req: NextRequest) {
             const delta = chunk.choices[0]?.delta?.content;
             if (delta) send('delta', { text: delta });
             if (chunk.usage) usage = chunk.usage as OpenAiUsage;
+          }
+          // Settlement MUST come from real usage. If the stream finished without a
+          // usage chunk (proxy/gateway dropped include_usage, early finish, etc.),
+          // we have no real cost — bill the conservative reserved estimate rather
+          // than letting cost collapse to 0/min_charge (metering bypass). C1.
+          if (typeof usage.completion_tokens !== 'number' || usage.completion_tokens <= 0) {
+            const balance = await settle(requestId, estCredits, null, model);
+            send('done', { credits: estCredits, balance });
+            controller.close();
+            return;
           }
           vendorUsd = costFromOpenAiUsage(usage, model, pricing);
         } else {
