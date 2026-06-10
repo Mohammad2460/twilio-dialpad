@@ -29,8 +29,14 @@ _Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/spe
 - [x] Dodo top-up: `ensureTopUpProduct` (self-provisioning 1¢/unit one-time product) + `/api/checkout/topup/[userId]` (pack allowlist 1000/2500/5000) + client `startTopUp` + chatbox upsell.
 - [x] Backend + extension typecheck both 0 errors.
 
+**Code review fixes (all applied + verified):**
+- [x] #1 free-tier grant on device registration (idempotent).
+- [x] #2 `reap_stale_reservations` cron — refunds orphaned holds (prod + smoke-tested).
+- [x] #3 Dodo top-up rewritten to **Pay-What-You-Want + exact `amount`** (cents=credits) per Dodo's dynamic-pricing API — removes the fragile quantity×unit-price assumption. Confirmed against Dodo docs (`pay_what_you_want`, `price` floor, `suggested_price`; checkout `product_cart[].amount`).
+
 **Outstanding v2:**
 - [ ] **Set `ANTHROPIC_API_KEY` in Vercel prod** — chat returns 503 without it (graceful). LAST blocker for live managed AI.
+- [ ] First real top-up will self-provision the PWYW product; confirm one live $10 purchase charges correctly before promoting.
 - [ ] Mount `CreditBalance` in ProTab/StatusBar (component ready; not yet placed).
 - [ ] Backend unit tests (`credits-math.test.ts`) hang in THIS sandbox (vitest/esbuild stall) — run in CI; math hand-verified + DB smoke green.
 - [ ] Open PR for `claude/v2-managed-ai`.

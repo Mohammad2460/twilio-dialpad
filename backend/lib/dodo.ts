@@ -146,14 +146,17 @@ export async function createCheckoutSession(
 }
 
 // ── credit top-up (v2) ───────────────────────────────────────────
-// One one-time product priced at 1 cent per unit; checkout quantity = number of
-// credits, so the user pays exactly $0.01/credit (the plan's flat top-up rate).
-// metadata.topup_credits tells the webhook how many credits to grant.
+// A single Pay-What-You-Want one-time product. Checkout passes the EXACT
+// `amount` (cents) per the Dodo dynamic-pricing flow — 1 credit = $0.01 = 1
+// cent, so amount_cents == credits. This avoids relying on quantity×unit-price
+// multiplication. `price` is the PWYW floor (smallest pack, $10). The webhook
+// reads metadata.topup_credits to grant exactly that many.
 
 const TOPUP_PRODUCT_NAME = 'AI Twilio Dialer Credits';
+const TOPUP_FLOOR_CENTS = 1000; // smallest pack = 1000 credits = $10.00
 let _topupProductIdCache: string | null = null;
 
-/** Idempotent: find the 1¢/unit top-up product by name, else create it. */
+/** Idempotent: find the PWYW top-up product by name, else create it. */
 export async function ensureTopUpProduct(): Promise<string> {
   if (_topupProductIdCache) return _topupProductIdCache;
 
@@ -177,9 +180,12 @@ export async function ensureTopUpProduct(): Promise<string> {
       price: {
         type: 'one_time_price',
         currency: CURRENCY,
-        price: 1, // 1 cent per unit; quantity sets the pack size
+        price: TOPUP_FLOOR_CENTS, // PWYW floor; checkout sends the exact amount
+        pay_what_you_want: true,
+        suggested_price: TOPUP_FLOOR_CENTS,
         discount: 0,
         purchasing_power_parity: false,
+        tax_inclusive: false,
       },
     }),
   });
@@ -193,8 +199,8 @@ export async function ensureTopUpProduct(): Promise<string> {
 }
 
 /**
- * Create a one-time checkout for `credits` credits ($0.01 each). Embeds
- * `topup_credits` in metadata so the webhook grants exactly that many.
+ * Create a one-time checkout charging exactly `credits` cents ($0.01/credit).
+ * Embeds `topup_credits` in metadata so the webhook grants exactly that many.
  */
 export async function createTopUpCheckout(
   userId: string,
@@ -205,7 +211,8 @@ export async function createTopUpCheckout(
   const res = await dodoFetch('/checkouts', {
     method: 'POST',
     body: JSON.stringify({
-      product_cart: [{ product_id: productId, quantity: credits }],
+      // amount = exact charge in cents; 1 credit = 1 cent. quantity stays 1.
+      product_cart: [{ product_id: productId, quantity: 1, amount: credits }],
       metadata: { userId, topup_credits: String(credits) },
       return_url: returnUrl,
     }),
