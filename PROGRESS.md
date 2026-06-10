@@ -1,8 +1,40 @@
-# PROGRESS — Twilio Dialpad v1
+# PROGRESS — Twilio Dialpad
 
-> Canonical handoff. Source of truth = git history + [PR #3](https://github.com/Mohammad2460/twilio-dialpad/pull/3).
-> To resume in a new session: read this file + `git log origin/main..HEAD` + the plan.
+> Canonical handoff. Source of truth = git history + the plan.
 > Plan: `~/.claude/plans/generic-sauteeing-willow.md`
+
+---
+
+## v2 — Managed AI + credits (Phase 8) — IN PROGRESS
+
+_Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/specs/2026-06-10-v2-managed-ai-credits-design.md`._
+
+**Locked:** managed AI = Claude family (Haiku default free; Sonnet/Opus Pro); OpenRouter deferred; managed transcription (P8.3) DEFERRED (Vercel serverless can't host an audio WS relay — transcription stays BYO-Deepgram); safe conservative pricing defaults (N=1000, mono, free-grant 50) pending real burn data.
+**Invariants held:** calls always BYO-Twilio (credits meter AI only) · Auth Token never persisted · backend = source of truth (row-locked ledger) · marketing consent separate/default-OFF · zero balance never drops a call. **Additive only — existing v1 users: no re-login, no breakage, managed mode opt-in.**
+
+| Phase | State |
+|---|---|
+| Spec | ✅ `3e64e68` |
+| **P8.1** ledger schema + atomic plpgsql (reserve/settle/refund/grant/expire, oversell-safe) | ✅ code `d615ba8` — **NOT yet applied to prod** (awaiting explicit approval) |
+| **P8.2** typed billing engine + cost adapters + caps | ✅ `a786998` |
+| **P8.4** `/api/ai/chat` managed Claude chatbox (reserve→settle, Haiku free/Sonnet+Opus Pro) | ✅ code, backend typecheck pending |
+| **P8.5** Dodo webhook grants (monthly+topup, idempotent) + `/api/credits/expire` cron | ✅ code |
+| **P8.6** client `credits.ts` + `AiChatbox` + `CreditBalance` + `/api/credits/[userId]` | ✅ `1cf33df` (extension typecheck green) |
+| **P8.3** managed Deepgram proxy | ⛔ DEFERRED (infra) |
+| **P8.7** billing-math tests | ✅ written; ledger/concurrency tests = DB-level (Supabase branch) TODO |
+| **P8.8** verification | ⏳ |
+
+**Outstanding v2:**
+- [ ] Apply `scripts/migration-credits.sql` to prod Supabase `xyhkklqnbxoucnjlckaz` (additive; needs explicit OK).
+- [ ] Set `ANTHROPIC_API_KEY` in Vercel prod (chat returns 503 without it).
+- [ ] Backend local typecheck needs `pnpm install` in `backend/` (deps only ever installed on Vercel) — `@anthropic-ai/sdk` added to package.json.
+- [ ] Wire a Dodo one-time top-up product (webhook reads `metadata.topup_credits`).
+- [ ] Mount `CreditBalance` in ProTab/StatusBar; top-up checkout flow.
+- [ ] DB-level ledger tests (concurrency/idempotency/expiry-order) against a Supabase branch.
+
+---
+
+## v1 (shipped — `1ab3d24` on main)
 
 _Last updated: 2026-06-10 · branch `claude/musing-meninsky-d95614` · latest commit `503c5de`_
 
