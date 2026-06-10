@@ -4,7 +4,7 @@ import { storage } from '@shared/storage';
 import type { Settings } from '@shared/types';
 import { maskSid, provisionMessagingAddon } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
-import { ensureCloudAccount } from '@shared/cloud';
+import { ensureCloudAccount, isDeviceRegistered, registerDevice } from '@shared/cloud';
 import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
 import { PaywallGate } from './PaywallGate';
 
@@ -32,6 +32,7 @@ export function SettingsTab() {
     <div className="space-y-5 p-4">
       <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
 
+      <SecureDeviceSection settings={settings} />
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
       <AISection settings={settings} onUpdate={update} />
       <EnableSmsSection settings={settings} />
@@ -307,6 +308,59 @@ function AccountSection({ settings }: { settings: Settings }) {
           Sign out
         </button>
       </div>
+    </Section>
+  );
+}
+
+function SecureDeviceSection({ settings }: { settings: Settings }) {
+  const [registered, setRegistered] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    isDeviceRegistered().then(setRegistered).catch(() => setRegistered(true));
+  }, []);
+
+  if (registered !== false) return null; // hidden once secured (or while loading)
+
+  async function secure() {
+    const token = window.prompt(
+      'Enter your Twilio Auth Token once to secure this device.\nVerified with Twilio, then discarded — never stored.',
+    );
+    if (!token || !token.trim()) return;
+    setBusy(true);
+    setMsg('Securing…');
+    try {
+      await registerDevice({
+        accountSid: settings.accountSid,
+        authToken: token.trim(),
+        functionUrl: settings.functionUrl,
+        configSecret: settings.configSecret,
+      });
+      setRegistered(true);
+      setMsg('✓ Device secured.');
+    } catch (e) {
+      setMsg('Failed: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Section title="Secure this device">
+      <p className="text-xs text-gray-500">
+        Upgrade to per-device authentication (recommended). A one-time Twilio Auth Token check
+        confirms ownership; it is never stored.
+      </p>
+      <button
+        type="button"
+        onClick={secure}
+        disabled={busy}
+        className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
+      >
+        {busy ? 'Securing…' : 'Secure this device'}
+      </button>
+      {msg && <p className="text-xs text-gray-600 break-words">{msg}</p>}
     </Section>
   );
 }
