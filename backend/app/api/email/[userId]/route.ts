@@ -35,16 +35,41 @@ function randomSixDigitCode(): string {
 }
 
 /**
- * Email-delivery stub.
- * TODO: wire Resend/SendGrid — replace the console.log below with an actual
- *       API call, e.g.:
- *   await resend.emails.send({ to: email, subject: 'Your code', text: `Code: ${code}` });
+ * Send the verification code via Resend. Returns 'sent' on success, or
+ * 'unconfigured' when no provider is set up (RESEND_API_KEY / EMAIL_FROM
+ * missing) or the provider call fails — the caller returns a graceful 503
+ * rather than a 500, and never persists a code it can't deliver.
+ *
+ * In non-production with no provider, logs a stub code (dev convenience).
  */
-async function sendVerificationEmail(email: string, code: string): Promise<void> {
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('sendVerificationEmail not implemented — wire an email provider');
+async function sendVerificationEmail(email: string, code: string): Promise<'sent' | 'unconfigured'> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey || !from) {
+    if (process.env.NODE_ENV === 'production') return 'unconfigured';
+    console.log(`[email-verify] STUB — would send code ${code} to ${email}`);
+    return 'sent';
   }
-  console.log(`[email-verify] STUB — would send code ${code} to ${email}`);
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject: 'Your Twilio Dialer verification code',
+        text: `Your verification code is ${code}. It expires in 15 minutes.\n\nIf you didn't request this, ignore this email.`,
+      }),
+    });
+    if (!res.ok) {
+      console.error('[email-verify] Resend send failed', res.status);
+      return 'unconfigured';
+    }
+    return 'sent';
+  } catch (e) {
+    console.error('[email-verify] Resend send threw', e);
+    return 'unconfigured';
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -124,7 +149,17 @@ export async function POST(
   const now = new Date().toISOString();
   const expiresAt = new Date(Date.now() + VERIFY_CODE_TTL_MS).toISOString();
 
-  // --- Build the update payload ---
+  // --- Send the verification email FIRST; don't persist a code we can't
+  //     deliver. Degrade to 503 (not 500) when no provider is configured. ---
+  const delivery = await sendVerificationEmail(normalizedEmail, code);
+  if (delivery === 'unconfigured') {
+    return NextResponse.json(
+      { error: 'email_delivery_unavailable' },
+      { status: 503, headers: corsHeaders },
+    );
+  }
+
+  // --- Persist email + consent + pending code in a single atomic update ---
   const update: Record<string, string | null> = {
     email: normalizedEmail,
     product_email_consent_at: now,
@@ -144,9 +179,6 @@ export async function POST(
     console.error('[email POST] db update failed', dbError);
     return NextResponse.json({ error: 'db_error' }, { status: 500, headers: corsHeaders });
   }
-
-  // --- Send (stubbed) verification email ---
-  await sendVerificationEmail(normalizedEmail, code);
 
   // --- Response (expose devCode only outside production) ---
   const isDev = process.env.NODE_ENV !== 'production';

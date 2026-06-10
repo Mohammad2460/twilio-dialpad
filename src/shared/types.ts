@@ -114,4 +114,5 @@ export interface Settings {
   recordOutgoing?: boolean;
   recordIncoming?: boolean;
   recordingConsentAck?: boolean;
+  messagingProvisioned?: boolean;
 }

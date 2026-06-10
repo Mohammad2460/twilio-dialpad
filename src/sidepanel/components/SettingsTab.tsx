@@ -36,7 +36,7 @@ export function SettingsTab() {
       <SecureDeviceSection settings={settings} />
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
       <AISection settings={settings} onUpdate={update} />
-      <EnableSmsSection settings={settings} />
+      <EnableSmsSection settings={settings} onUpdate={update} />
       <RecordingsSection settings={settings} onUpdate={update} />
       <ExtensionPrefsSection settings={settings} onUpdate={update} />
       <AccountSection settings={settings} />
@@ -376,7 +376,13 @@ function SecureDeviceSection({ settings }: { settings: Settings }) {
   );
 }
 
-function EnableSmsSection({ settings }: { settings: Settings }) {
+function EnableSmsSection({
+  settings,
+  onUpdate,
+}: {
+  settings: Settings;
+  onUpdate: (p: Partial<Settings>) => Promise<void>;
+}) {
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const canProvision = !!(settings.serviceSid && settings.environmentSid && settings.functionUrl);
@@ -404,7 +410,10 @@ function EnableSmsSection({ settings }: { settings: Settings }) {
         },
         (s) => setStatus(`Deploying SMS — ${s}…`),
       );
-      setStatus('✓ SMS enabled. Text prospects from the SMS tab.');
+      // Marks SMS + recording-status (+ delete-recording) Functions deployed and
+      // RECORDING_CALLBACK set — gates the call-recording toggle.
+      await onUpdate({ messagingProvisioned: true });
+      setStatus('✓ SMS & recording enabled. Text prospects from the SMS tab.');
     } catch (e) {
       setStatus('Failed: ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -443,7 +452,15 @@ function RecordingsSection({
   const [userId, setUserId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const recordOn = settings.recordOutgoing ?? false;
-  const canConfig = !!(settings.serviceSid && settings.environmentSid && settings.configSecret);
+  // Recording needs the /recording-status callback Function, which only the SMS
+  // add-on deploys — NOT the first-run autoProvisionAll. Without it Twilio would
+  // record calls with nowhere to send the media, so gate on messagingProvisioned.
+  const canConfig = !!(
+    settings.serviceSid &&
+    settings.environmentSid &&
+    settings.configSecret &&
+    settings.messagingProvisioned
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -494,7 +511,7 @@ function RecordingsSection({
               onChange={toggle}
             />
           ) : (
-            <p className="text-xs text-gray-500">Run “Enable SMS” / setup first to provision recording.</p>
+            <p className="text-xs text-gray-500">Run “Enable SMS” first — it also provisions call recording.</p>
           )}
           {busy && <p className="text-xs text-gray-400">Saving…</p>}
           <div className="space-y-2">

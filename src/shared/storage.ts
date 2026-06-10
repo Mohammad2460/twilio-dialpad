@@ -31,6 +31,10 @@ const SettingsSchema = z.object({
   recordOutgoing: z.boolean().optional(),
   recordIncoming: z.boolean().optional(),
   recordingConsentAck: z.boolean().optional(),
+  // True once provisionMessagingAddon() has deployed the SMS + recording-status
+  // (+ delete-recording) Functions and set RECORDING_CALLBACK. Recording can't be
+  // enabled before this — otherwise Twilio records with no ingest callback.
+  messagingProvisioned: z.boolean().optional(),
 });
 
 const CallRecordSchema = z.object({
