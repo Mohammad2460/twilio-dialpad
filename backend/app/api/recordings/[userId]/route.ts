@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { authenticateUser } from '@/lib/auth';
+import { deleteTwilioRecording } from '@/lib/twilio-recording';
 
 export const runtime = 'nodejs';
 
@@ -72,12 +73,15 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ u
 
   const { data: row } = await supabase
     .from('recordings')
-    .select('id, storage_path')
+    .select('id, storage_path, recording_sid')
     .eq('id', id)
     .eq('user_id', userId)
     .maybeSingle();
   if (!row) return j({ error: 'not_found' }, 404);
 
+  // Delete the Twilio-side copy through the user's Function (best-effort), then
+  // remove our storage object + row so media lives nowhere we control after this.
+  await deleteTwilioRecording(userId, row.recording_sid);
   await supabase.storage.from('recordings').remove([row.storage_path]).catch?.(() => undefined);
   const { error } = await supabase.from('recordings').delete().eq('id', id).eq('user_id', userId);
   if (error) return j({ error: 'delete_failed' }, 500);

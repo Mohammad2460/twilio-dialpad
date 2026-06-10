@@ -440,7 +440,7 @@ export async function provisionMessagingAddon(
   }
   const p = (s: SmsProvisionStep) => onProgress?.(s);
 
-  const { TOKEN_JS, VOICE_JS, INCOMING_JS, CONFIG_JS, SMS_JS, INCOMING_SMS_JS, RECORDING_STATUS_JS } =
+  const { TOKEN_JS, VOICE_JS, INCOMING_JS, CONFIG_JS, SMS_JS, INCOMING_SMS_JS, RECORDING_STATUS_JS, DELETE_RECORDING_JS } =
     await import('./function-code');
 
   p('list');
@@ -462,6 +462,7 @@ export async function provisionMessagingAddon(
   const fnSms = await ensureFn('/sms');
   const fnIncomingSms = await ensureFn('/incoming-sms');
   const fnRecording = await ensureFn('/recording-status');
+  const fnDeleteRec = await ensureFn('/delete-recording');
 
   p('set-env');
   // /incoming-sms + /recording-status forward to our backend.
@@ -482,8 +483,11 @@ export async function provisionMessagingAddon(
   const vSms = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnSms, '/sms', SMS_JS);
   const vIncomingSms = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnIncomingSms, '/incoming-sms', INCOMING_SMS_JS, 'protected');
   const vRecording = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnRecording, '/recording-status', RECORDING_STATUS_JS);
+  // Public visibility (like /sms): our backend calls it with the configSecret;
+  // Twilio never calls it, so no Protected/X-Twilio-Signature gate.
+  const vDeleteRec = await serverless.uploadFunctionVersion(accountSid, authToken, serviceSid, fnDeleteRec, '/delete-recording', DELETE_RECORDING_JS);
 
-  const versionSids = [vToken, vVoice, vIncoming, vConfig, vSms, vIncomingSms, vRecording].map((v) => v.sid);
+  const versionSids = [vToken, vVoice, vIncoming, vConfig, vSms, vIncomingSms, vRecording, vDeleteRec].map((v) => v.sid);
   if (versionSids.some((s) => !s)) throw new Error('Function upload returned an empty version SID.');
 
   p('build');

@@ -353,3 +353,37 @@ exports.handler = async function (context, event, callback) {
   }
 };
 `.trim();
+
+export const DELETE_RECORDING_JS = `
+/**
+ * Delete a recording on the Twilio account. Called by our backend (which holds
+ * no API-Key secret) on user-initiated delete and on retention purge. Auth =
+ * shared CONFIG_SECRET. Deletes via the REST API with the API-Key creds in env.
+ * Body: { secret, recordingSid }
+ */
+exports.handler = async function (context, event, callback) {
+  const res = new Twilio.Response();
+  res.appendHeader('Content-Type', 'application/json');
+  try {
+    const secret = (event.secret || '').toString();
+    const recordingSid = (event.recordingSid || '').toString();
+    if (!secret || secret !== context.CONFIG_SECRET) {
+      res.setStatusCode(401); res.setBody({ error: 'unauthorized' }); return callback(null, res);
+    }
+    if (!/^RE[0-9a-f]{32}$/i.test(recordingSid)) {
+      res.setStatusCode(400); res.setBody({ error: 'invalid_recording_sid' }); return callback(null, res);
+    }
+    const auth = Buffer.from(context.API_KEY_SID + ':' + context.API_KEY_SECRET).toString('base64');
+    const url = 'https://api.twilio.com/2010-04-01/Accounts/' + context.ACCOUNT_SID + '/Recordings/' + recordingSid + '.json';
+    const del = await fetch(url, { method: 'DELETE', headers: { Authorization: 'Basic ' + auth } });
+    // 204 = deleted, 404 = already gone — both are success for our purposes.
+    if (del.status !== 204 && del.status !== 404) {
+      res.setStatusCode(502); res.setBody({ error: 'twilio_delete_failed', status: del.status }); return callback(null, res);
+    }
+    res.setBody({ ok: true }); return callback(null, res);
+  } catch (e) {
+    console.error('[delete-recording]', e);
+    res.setStatusCode(500); res.setBody({ error: 'exception' }); return callback(null, res);
+  }
+};
+`.trim();

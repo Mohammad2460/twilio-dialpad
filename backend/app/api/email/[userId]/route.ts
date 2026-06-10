@@ -101,19 +101,20 @@ export async function POST(
     );
   }
 
-  // --- Verify user row exists before generating a code ---
-  const { data: existingRows, error: rowCheckError } = await supabase
+  // --- Verify user row exists before generating a code (read-only probe; the
+  //     email is only written in the single atomic update below) ---
+  const { data: existing, error: rowCheckError } = await supabase
     .from('users')
-    .update({ email: normalizedEmail }) // minimal probe; real update follows below
+    .select('id')
     .eq('id', userId)
-    .select('id');
+    .maybeSingle();
 
   if (rowCheckError) {
     console.error('[email POST] db row-check failed', rowCheckError);
     return NextResponse.json({ error: 'db_error' }, { status: 500, headers: corsHeaders });
   }
 
-  if (!existingRows || existingRows.length === 0) {
+  if (!existing) {
     return NextResponse.json({ error: 'User not found' }, { status: 404, headers: corsHeaders });
   }
 

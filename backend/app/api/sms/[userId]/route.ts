@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { authenticateUser } from '@/lib/auth';
-import { getFunctionForUser } from '@/lib/device-functions';
+import { getFunctionForUser, ConfigDecryptError } from '@/lib/device-functions';
 
 export const runtime = 'nodejs';
 
@@ -73,7 +73,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
   const text = typeof body.body === 'string' ? body.body : '';
   if (!/^\+\d{6,}$/.test(to) || !text.trim()) return j({ error: 'invalid_request' }, 400);
 
-  const fn = await getFunctionForUser(userId);
+  // Compliance: never text a number that has opted out (inbound STOP).
+  const { data: optOut } = await supabase
+    .from('sms_opt_outs')
+    .select('number')
+    .eq('user_id', userId)
+    .eq('number', to)
+    .maybeSingle();
+  if (optOut) return j({ error: 'recipient_opted_out' }, 403);
+
+  let fn;
+  try {
+    fn = await getFunctionForUser(userId);
+  } catch (e) {
+    if (e instanceof ConfigDecryptError) return j({ error: 'config_error' }, 500);
+    throw e;
+  }
   if (!fn) return j({ error: 'messaging_not_provisioned' }, 409);
 
   // Call the user's Twilio Function /sms (it sends via Messages API with API-Key creds).

@@ -6,6 +6,7 @@ import { maskSid, provisionMessagingAddon } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount, isDeviceRegistered, registerDevice } from '@shared/cloud';
 import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
+import { enableBubble, disableBubble } from '@shared/bubble-perms';
 import { PaywallGate } from './PaywallGate';
 
 const DEEPGRAM_MODELS = [
@@ -259,9 +260,19 @@ function ExtensionPrefsSection({
       />
       <Toggle
         label="Floating call button"
-        description="Show a quick-dial bubble on pages."
+        description="Show a quick-dial bubble on pages. Asks for permission to run on websites when turned on."
         checked={settings.floatingIconEnabled ?? false}
-        onChange={(v) => onUpdate({ floatingIconEnabled: v })}
+        onChange={async (v) => {
+          if (v) {
+            // Request broad host permission (user gesture) + register the script.
+            const ok = await enableBubble();
+            if (!ok) return; // declined — leave the toggle off
+            await onUpdate({ floatingIconEnabled: true });
+          } else {
+            await disableBubble();
+            await onUpdate({ floatingIconEnabled: false });
+          }
+        }}
       />
       <Toggle
         label="Smart paste"
