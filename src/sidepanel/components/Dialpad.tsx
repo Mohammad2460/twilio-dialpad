@@ -35,6 +35,16 @@ export function Dialpad() {
     return () => { cancelled = true; };
   }, []);
 
+  // Consume a number queued by the click-to-call bubble.
+  useEffect(() => {
+    chrome.storage.local.get('pendingDial').then(({ pendingDial }) => {
+      if (typeof pendingDial === 'string' && pendingDial) {
+        setInput(pendingDial);
+        chrome.storage.local.remove('pendingDial').catch(() => {});
+      }
+    });
+  }, []);
+
   // Picker state
   const [pickerOpen, setPickerOpen] = useState(false);
   const [addingNumber, setAddingNumber] = useState(false);

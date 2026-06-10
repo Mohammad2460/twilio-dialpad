@@ -25,6 +25,15 @@ export default defineManifest({
     service_worker: 'src/background/service-worker.ts',
     type: 'module',
   },
+  // Click-to-call bubble. Inert unless the user enables `floatingIconEnabled`
+  // (the script reads the setting and only renders the FAB when on).
+  content_scripts: [
+    {
+      matches: ['http://*/*', 'https://*/*'],
+      js: ['src/content/bubble.ts'],
+      run_at: 'document_idle',
+    },
+  ],
   action: {
     default_title: 'Twilio Dialpad',
     default_icon: {
