@@ -35,6 +35,26 @@ export async function getCreditBalance(userId: string): Promise<CreditState> {
   return state;
 }
 
+/** Allowed top-up packs (must match the backend allowlist). */
+export const TOPUP_PACKS = [1000, 2500, 5000] as const;
+
+/**
+ * Start a one-time credit top-up checkout and open the hosted Dodo page in a
+ * new tab. `credits` must be one of TOPUP_PACKS. Returns false on failure.
+ */
+export async function startTopUp(userId: string, credits: number): Promise<boolean> {
+  const res = await fetch(`${BASE_URL}/api/checkout/topup/${userId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: await authHeader(userId) },
+    body: JSON.stringify({ credits }),
+  });
+  if (!res.ok) return false;
+  const { checkout_url } = (await res.json()) as { checkout_url?: string };
+  if (!checkout_url) return false;
+  await chrome.tabs.create({ url: checkout_url });
+  return true;
+}
+
 export interface ChatTurn {
   role: 'user' | 'assistant';
   content: string;

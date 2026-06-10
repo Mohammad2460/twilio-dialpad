@@ -4,6 +4,8 @@ import {
   streamChat,
   getCreditBalance,
   getCachedCreditState,
+  startTopUp,
+  TOPUP_PACKS,
   type ChatTurn,
 } from '@shared/credits';
 
@@ -146,7 +148,15 @@ export function AiChatbox({ transcript }: { transcript: string }) {
             notice.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'
           }`}
         >
-          {notice.msg}
+          <p>{notice.msg}</p>
+          {notice.kind === 'credits' && userId && (
+            <button
+              onClick={() => startTopUp(userId, TOPUP_PACKS[0])}
+              className="mt-1 font-medium text-blue-700 hover:underline"
+            >
+              Top up {TOPUP_PACKS[0]} credits (${TOPUP_PACKS[0] / 100})
+            </button>
+          )}
         </div>
       )}
 
