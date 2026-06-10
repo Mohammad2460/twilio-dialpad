@@ -19,10 +19,10 @@ _Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/spe
 | **P8.2** typed billing engine + cost adapters + caps | ✅ `a786998` |
 | **P8.4** `/api/ai/chat` managed Claude chatbox (reserve→settle, Haiku free/Sonnet+Opus Pro) | ✅ code, backend typecheck pending |
 | **P8.5** Dodo webhook grants (monthly+topup, idempotent) + `/api/credits/expire` cron | ✅ code |
-| **P8.6** client `credits.ts` + `AiChatbox` + `CreditBalance` + `/api/credits/[userId]` | ✅ `1cf33df` (extension typecheck green) |
-| **P8.3** managed Deepgram proxy | ⛔ DEFERRED (infra) |
-| **P8.7** billing-math tests | ✅ written; ledger/concurrency tests = DB-level (Supabase branch) TODO |
-| **P8.8** verification | ⏳ |
+| **P8.6** credit UI: chatbox balance + `CreditsSection` (mounted in all ProTab states, top-up packs) + `/api/credits/[userId]` | ✅ |
+| **P8.3** managed Deepgram proxy | ⛔ DEFERRED (infra) — NOT call recording (that shipped in v1); transcription stays BYO-key |
+| **P8.7** billing math: **13/13 assertions executed + pass**; ledger logic **smoke-tested green in prod** (grant/reserve/settle/refund/expire/reap, idempotency, insufficient) | ✅ |
+| **P8.8** verification: backend + extension typecheck 0 errors; DB smoke green; full extension build | ⏳ (build below; live run blocked on ANTHROPIC_API_KEY) |
 
 **Done since:**
 - [x] Prod migration applied to Supabase `xyhkklqnbxoucnjlckaz` (3 tables, 6 functions, pricing v1). **Smoke test caught + fixed a real bug** (`grant_credits` wrote `expires_at` to the ledger — column lives on buckets). Full reserve/settle/refund/expire/idempotency/insufficient cycle verified green on a throwaway user.
