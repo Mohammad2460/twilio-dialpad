@@ -59,13 +59,15 @@ export async function authenticate(req: NextRequest): Promise<AuthResult | null>
 
   // If this user already has a non-revoked device, they've migrated — the bare
   // userId is no longer a valid credential (prevents a leaked UUID being a
-  // permanent bearer token alongside the real device secret).
-  const { count } = await supabase
+  // permanent bearer token alongside the real device secret). FAIL CLOSED: a
+  // query error leaves count null, so accept legacy ONLY when we positively
+  // know the count is zero (no error, count === 0).
+  const { count, error: countErr } = await supabase
     .from('devices')
     .select('id', { count: 'exact', head: true })
     .eq('user_id', userId)
     .is('revoked_at', null);
-  if (count && count > 0) return null;
+  if (countErr || count === null || count > 0) return null;
 
   console.warn('[auth] LEGACY bearer (userId-as-token) accepted — migrate this device', { userId });
   return { userId, deviceId: null, legacy: true };
