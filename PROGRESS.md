@@ -9,7 +9,7 @@
 
 _Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/specs/2026-06-10-v2-managed-ai-credits-design.md`._
 
-**Locked:** managed AI = Claude family (Haiku default free; Sonnet/Opus Pro); OpenRouter deferred; managed transcription (P8.3) DEFERRED (Vercel serverless can't host an audio WS relay — transcription stays BYO-Deepgram); safe conservative pricing defaults (N=1000, mono, free-grant 50) pending real burn data.
+**Locked:** managed AI = Claude family (Haiku default free; Sonnet/Opus Pro); OpenRouter deferred; **managed transcription (P8.3) BUILT** via Deepgram `/auth/grant` temp-token JWTs (Vercel-native, no WS relay) — BOTH modes now per plan: BYO Deepgram (free) OR managed (our key, ~2.5 cr/min mono). Safe conservative pricing defaults (N=1000, mono, free-grant 50) pending real burn data.
 **Invariants held:** calls always BYO-Twilio (credits meter AI only) · Auth Token never persisted · backend = source of truth (row-locked ledger) · marketing consent separate/default-OFF · zero balance never drops a call. **Additive only — existing v1 users: no re-login, no breakage, managed mode opt-in.**
 
 | Phase | State |
@@ -20,7 +20,7 @@ _Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/spe
 | **P8.4** `/api/ai/chat` managed Claude chatbox (reserve→settle, Haiku free/Sonnet+Opus Pro) | ✅ code, backend typecheck pending |
 | **P8.5** Dodo webhook grants (monthly+topup, idempotent) + `/api/credits/expire` cron | ✅ code |
 | **P8.6** credit UI: chatbox balance + `CreditsSection` (mounted in all ProTab states, top-up packs) + `/api/credits/[userId]` | ✅ |
-| **P8.3** managed Deepgram proxy | ⛔ DEFERRED (infra) — NOT call recording (that shipped in v1); transcription stays BYO-key |
+| **P8.3** managed Deepgram transcription (temp-token JWTs, reconnect-per-window, zero-balance stop never drops call) | ✅ built — typecheck 0 errors, credit math verified (~2.5 cr/min mono). Needs `DEEPGRAM_API_KEY` in Vercel for live use |
 | **P8.7** billing math: **13/13 assertions executed + pass**; ledger logic **smoke-tested green in prod** (grant/reserve/settle/refund/expire/reap, idempotency, insufficient) | ✅ |
 | **P8.8** verification: backend + extension typecheck 0 errors; DB smoke green; full extension build | ⏳ (build below; live run blocked on ANTHROPIC_API_KEY) |
 
@@ -34,9 +34,11 @@ _Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/spe
 - [x] #2 `reap_stale_reservations` cron — refunds orphaned holds (prod + smoke-tested).
 - [x] #3 Dodo top-up rewritten to **Pay-What-You-Want + exact `amount`** (cents=credits) per Dodo's dynamic-pricing API — removes the fragile quantity×unit-price assumption. Confirmed against Dodo docs (`pay_what_you_want`, `price` floor, `suggested_price`; checkout `product_cart[].amount`).
 
-**Outstanding v2:**
-- [ ] **Set `ANTHROPIC_API_KEY` in Vercel prod** — chat returns 503 without it (graceful). LAST blocker for live managed AI.
-- [ ] First real top-up will self-provision the PWYW product; confirm one live $10 purchase charges correctly before promoting.
+**Outstanding v2 (Vercel env + final):**
+- [ ] **`ANTHROPIC_API_KEY`** in Vercel prod — managed chat 503 without it.
+- [ ] **`DEEPGRAM_API_KEY`** (Member+) in Vercel prod — managed transcription 503 without it.
+- [ ] First real top-up self-provisions the PWYW product; confirm one live $10 charge before promoting.
+- [ ] Open PR for `claude/v2-managed-ai` (user: open last).
 - [ ] Mount `CreditBalance` in ProTab/StatusBar (component ready; not yet placed).
 - [ ] Backend unit tests (`credits-math.test.ts`) hang in THIS sandbox (vitest/esbuild stall) — run in CI; math hand-verified + DB smoke green.
 - [ ] Open PR for `claude/v2-managed-ai`.
