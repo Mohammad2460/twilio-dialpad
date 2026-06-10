@@ -4,11 +4,11 @@
 > To resume in a new session: read this file + `git log origin/main..HEAD` + the plan.
 > Plan: `~/.claude/plans/generic-sauteeing-willow.md`
 
-_Last updated: 2026-06-10 · branch `claude/musing-meninsky-d95614` · latest commit `783c0b7`_
+_Last updated: 2026-06-10 · branch `claude/musing-meninsky-d95614` · latest commit `503c5de`_
 
-## Status: v1 BUILT + REVIEWED + GREEN ON PR
+## Status: v1 COMPLETE — session closed. Working tree clean, branch in sync, CI green.
 
-All phases 0a→6 + tests shipped. Two code reviews (full-branch + Codex ×2 rounds) — every finding fixed. CI green.
+All phases 0a→6 + tests shipped. Two code reviews (full-branch + Codex ×3 rounds) — every finding fixed. CI green. **Only remaining action: merge PR #3 to main when you decide to ship.**
 
 ## What shipped (phase → result)
 
