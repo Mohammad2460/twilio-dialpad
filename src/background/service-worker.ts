@@ -1,4 +1,5 @@
 import { MsgSchema } from '@shared/messaging';
+import { syncBubbleRegistration } from '@shared/bubble-perms';
 import {
   getInstallId,
   track,
@@ -41,7 +42,23 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 // Drain any events queued before the worker was last suspended.
 flushTelemetry().catch(() => {});
 
+// Re-assert the click-to-call bubble registration to match current settings +
+// granted permissions (handles SW restarts and out-of-band permission revoke).
+chrome.storage.local
+  .get('settings')
+  .then(({ settings }) => syncBubbleRegistration(!!(settings as { floatingIconEnabled?: boolean })?.floatingIconEnabled))
+  .catch(() => {});
+
 chrome.runtime.onMessage.addListener((raw, _sender, _sendResponse) => {
+  // Click-to-call bubble → open the side panel pre-filled with the number.
+  if (raw && typeof raw === 'object' && (raw as { kind?: unknown }).kind === 'bubble-dial') {
+    const number = String((raw as { number?: unknown }).number ?? '');
+    if (number) chrome.storage.local.set({ pendingDial: number }).catch(() => {});
+    const windowId = _sender.tab?.windowId;
+    if (windowId !== undefined) chrome.sidePanel.open({ windowId }).catch(() => {});
+    return false;
+  }
+
   // Telemetry events from pages — the SW is the single queue writer.
   if (isTelemetryMessage(raw)) {
     void ingestEvent(raw.event);

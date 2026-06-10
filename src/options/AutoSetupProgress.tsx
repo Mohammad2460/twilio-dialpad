@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { autoProvisionAll, type DeployProgress } from '@shared/twilio-rest';
+import { registerDevice } from '@shared/cloud';
 import { track } from '@shared/telemetry';
 import type { Settings } from '@shared/types';
 import type { SetupInput } from './ProvisioningWizard';
@@ -50,8 +51,22 @@ export function AutoSetupProgress({ input, onDone, onBack }: Props) {
         setSteps((prev) => (prev.includes(p.step) ? prev : [...prev, p.step]));
         if (p.step === 'done') setDone(true);
       },
-    ).then((result) => {
+    ).then(async (result) => {
       track('autodeploy_succeeded');
+      // Phase 0b: register THIS device with genuine Twilio ownership proof.
+      // The Auth Token is in memory here only — registerDevice sends it once for
+      // server-side verification against Twilio and it is never stored.
+      try {
+        await registerDevice({
+          accountSid: input.accountSid,
+          authToken: input.authToken,
+          functionUrl: result.functionUrl,
+          configSecret: result.configSecret,
+        });
+      } catch (e) {
+        // Non-fatal: legacy auth fallback covers until the device re-registers.
+        console.error('[setup] device registration failed', e);
+      }
       if (!cancelled) onDone(result);
     }).catch((e: unknown) => {
       const reason = e instanceof Error ? e.message : String(e);

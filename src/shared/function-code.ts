@@ -94,7 +94,16 @@ exports.handler = function (context, event, callback) {
     return callback(null, twiml);
   }
 
-  const dial = twiml.dial({ callerId: callerId, answerOnBridge: true, timeout: 30 });
+  const recordOn = String(context.RECORD_OUTGOING || 'false').toLowerCase() === 'true';
+  if (recordOn) {
+    twiml.say({ voice: 'alice' }, 'This call may be recorded.');
+  }
+  const dialOpts = { callerId: callerId, answerOnBridge: true, timeout: 30 };
+  if (recordOn) {
+    dialOpts.record = 'record-from-answer-dual';
+    if (context.RECORDING_CALLBACK) dialOpts.recordingStatusCallback = context.RECORDING_CALLBACK;
+  }
+  const dial = twiml.dial(dialOpts);
   if (/^\\+?\\d{6,}$/.test(to.replace(/[\\s\\-()]/g, ''))) {
     dial.number(to);
   } else {
@@ -179,6 +188,9 @@ exports.handler = async function (context, event, callback) {
     if (typeof event.forwardNumber === 'string') {
       updates.FORWARD_NUMBER = event.forwardNumber.trim() || 'none';
     }
+    if (typeof event.recordOutgoing === 'boolean' || event.recordOutgoing === 'true' || event.recordOutgoing === 'false') {
+      updates.RECORD_OUTGOING = String(event.recordOutgoing);
+    }
 
     if (Object.keys(updates).length === 0) {
       res.setBody({ ok: true, updated: [] });
@@ -232,6 +244,146 @@ exports.handler = async function (context, event, callback) {
     res.setStatusCode(500);
     res.setBody({ ok: false, error: String(e && e.message || e) });
     return callback(null, res);
+  }
+};
+`.trim();
+
+export const SMS_JS = `
+/**
+ * Outbound SMS sender. Called by our backend (which holds the decrypted
+ * configSecret). Auth: event.secret === CONFIG_SECRET. Sends via the Twilio
+ * Messages API using the API Key SID/Secret already in env (no Auth Token).
+ */
+exports.handler = async function (context, event, callback) {
+  const res = new Twilio.Response();
+  res.appendHeader('Access-Control-Allow-Origin', '*');
+  res.appendHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.appendHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.appendHeader('Content-Type', 'application/json');
+  try {
+    if (!event.secret || event.secret !== context.CONFIG_SECRET) {
+      res.setStatusCode(401); res.setBody({ ok: false, error: 'unauthorized' }); return callback(null, res);
+    }
+    const to = (event.To || '').toString().trim();
+    const body = (event.Body || '').toString();
+    const from = (context.CALLER_ID || '').toString().trim();
+    if (!to || !body) { res.setStatusCode(400); res.setBody({ ok: false, error: 'missing To/Body' }); return callback(null, res); }
+    if (!from) { res.setStatusCode(500); res.setBody({ ok: false, error: 'no CALLER_ID configured' }); return callback(null, res); }
+    const auth = Buffer.from(context.API_KEY_SID + ':' + context.API_KEY_SECRET).toString('base64');
+    const params = new URLSearchParams({ To: to, From: from, Body: body });
+    const r = await fetch('https://api.twilio.com/2010-04-01/Accounts/' + context.ACCOUNT_SID + '/Messages.json', {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    const data = await r.json();
+    if (!r.ok) { res.setStatusCode(502); res.setBody({ ok: false, error: (data && data.message) || ('send failed ' + r.status) }); return callback(null, res); }
+    res.setBody({ ok: true, sid: data.sid, from: from });
+    return callback(null, res);
+  } catch (e) {
+    res.setStatusCode(500); res.setBody({ ok: false, error: String((e && e.message) || e) }); return callback(null, res);
+  }
+};
+`.trim();
+
+export const INCOMING_SMS_JS = `
+/**
+ * Inbound SMS webhook. Deploy with PROTECTED visibility so Twilio validates the
+ * X-Twilio-Signature before this runs (we never handle the Auth Token).
+ * Forwards the message to our backend for storage (auth = shared CONFIG_SECRET).
+ */
+exports.handler = async function (context, event, callback) {
+  const from = (event.From || '').toString();
+  const to = (event.To || '').toString();
+  const body = (event.Body || '').toString();
+  const messageSid = (event.MessageSid || event.SmsSid || '').toString();
+  const twiml = new Twilio.twiml.MessagingResponse();
+  try {
+    await fetch((context.BACKEND_URL || 'https://dialler-mcp.vercel.app') + '/api/sms/inbound', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountSid: context.ACCOUNT_SID, from: from, to: to, body: body, messageSid: messageSid, secret: context.CONFIG_SECRET }),
+    });
+  } catch (e) {
+    console.error('[incoming-sms] forward failed', e);
+  }
+  // Compliance: Twilio Advanced Opt-Out handles STOP/START/HELP at the account
+  // level. Provide a HELP reply as a fallback.
+  if (body.trim().toUpperCase() === 'HELP') {
+    twiml.message('Reply STOP to unsubscribe. Msg & data rates may apply.');
+  }
+  return callback(null, twiml);
+};
+`.trim();
+
+export const RECORDING_STATUS_JS = `
+/**
+ * recordingStatusCallback target. On a completed recording, fetch the media
+ * (API-Key auth) and stream it to our backend's signed upload URL. The backend
+ * holds no Twilio creds, so the media transfer happens here.
+ */
+exports.handler = async function (context, event, callback) {
+  try {
+    const recordingSid = (event.RecordingSid || '').toString();
+    const recordingUrl = (event.RecordingUrl || '').toString();
+    const callSid = (event.CallSid || '').toString();
+    const durationSec = parseInt(event.RecordingDuration || '0', 10) || 0;
+    if (!recordingSid || !recordingUrl) return callback(null, '');
+    const backend = context.BACKEND_URL || 'https://dialler-mcp.vercel.app';
+
+    const ing = await fetch(backend + '/api/recordings/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountSid: context.ACCOUNT_SID, secret: context.CONFIG_SECRET, callSid: callSid, recordingSid: recordingSid, durationSec: durationSec }),
+    });
+    const ingData = await ing.json().catch(function () { return {}; });
+    if (!ing.ok || !ingData.uploadUrl) { console.error('[recording-status] ingest failed', ing.status, ingData); return callback(null, ''); }
+
+    const auth = Buffer.from(context.API_KEY_SID + ':' + context.API_KEY_SECRET).toString('base64');
+    const media = await fetch(recordingUrl + '.mp3', { headers: { Authorization: 'Basic ' + auth } });
+    if (!media.ok) { console.error('[recording-status] media download failed', media.status); return callback(null, ''); }
+    const buf = Buffer.from(await media.arrayBuffer());
+
+    const put = await fetch(ingData.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'audio/mpeg' }, body: buf });
+    if (!put.ok) console.error('[recording-status] upload failed', put.status, await put.text().catch(function () { return ''; }));
+    return callback(null, '');
+  } catch (e) {
+    console.error('[recording-status]', e);
+    return callback(null, '');
+  }
+};
+`.trim();
+
+export const DELETE_RECORDING_JS = `
+/**
+ * Delete a recording on the Twilio account. Called by our backend (which holds
+ * no API-Key secret) on user-initiated delete and on retention purge. Auth =
+ * shared CONFIG_SECRET. Deletes via the REST API with the API-Key creds in env.
+ * Body: { secret, recordingSid }
+ */
+exports.handler = async function (context, event, callback) {
+  const res = new Twilio.Response();
+  res.appendHeader('Content-Type', 'application/json');
+  try {
+    const secret = (event.secret || '').toString();
+    const recordingSid = (event.recordingSid || '').toString();
+    if (!secret || secret !== context.CONFIG_SECRET) {
+      res.setStatusCode(401); res.setBody({ error: 'unauthorized' }); return callback(null, res);
+    }
+    if (!/^RE[0-9a-f]{32}$/i.test(recordingSid)) {
+      res.setStatusCode(400); res.setBody({ error: 'invalid_recording_sid' }); return callback(null, res);
+    }
+    const auth = Buffer.from(context.API_KEY_SID + ':' + context.API_KEY_SECRET).toString('base64');
+    const url = 'https://api.twilio.com/2010-04-01/Accounts/' + context.ACCOUNT_SID + '/Recordings/' + recordingSid + '.json';
+    const del = await fetch(url, { method: 'DELETE', headers: { Authorization: 'Basic ' + auth } });
+    // 204 = deleted, 404 = already gone — both are success for our purposes.
+    if (del.status !== 204 && del.status !== 404) {
+      res.setStatusCode(502); res.setBody({ error: 'twilio_delete_failed', status: del.status }); return callback(null, res);
+    }
+    res.setBody({ ok: true }); return callback(null, res);
+  } catch (e) {
+    console.error('[delete-recording]', e);
+    res.setStatusCode(500); res.setBody({ error: 'exception' }); return callback(null, res);
   }
 };
 `.trim();

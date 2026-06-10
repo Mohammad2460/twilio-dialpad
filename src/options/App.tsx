@@ -460,6 +460,25 @@ function DeepgramCard({ settings, onUpdate }: { settings: Settings; onUpdate: (s
         <p className="mt-1 text-xs text-gray-400">Used only in your browser. Never sent to any server we operate.</p>
       </div>
 
+      <div>
+        <label className="block text-xs font-medium text-gray-700">Transcription model</label>
+        <select
+          value={settings.deepgramModel ?? 'nova-2'}
+          onChange={async (e) => {
+            const updated = await storage.updateSettings({ deepgramModel: e.target.value });
+            if (updated) onUpdate(updated);
+          }}
+          className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
+        >
+          <option value="nova-3">Nova-3 — most accurate</option>
+          <option value="nova-2">Nova-2 — default, fast</option>
+          <option value="nova-3-medical">Nova-3 Medical</option>
+          <option value="enhanced">Enhanced</option>
+          <option value="base">Base — cheapest</option>
+        </select>
+        <p className="mt-1 text-xs text-gray-400">Higher tiers cost more per minute on your own Deepgram account.</p>
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           type="button"

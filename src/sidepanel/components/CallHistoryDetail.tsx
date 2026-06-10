@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { transcripts } from '@shared/transcripts';
 import type { Transcript } from '@shared/types';
 import { formatForDisplay } from '@shared/phone';
+import { computeTalkRatio } from '@shared/talk-ratio';
+import { PaywallGate } from './PaywallGate';
 
 interface Props {
   callSid: string;
@@ -30,6 +32,8 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
     if (!q) return t.segments;
     return t.segments.filter((s) => s.text.toLowerCase().includes(q));
   }, [t, query]);
+
+  const ratio = useMemo(() => (t ? computeTalkRatio(t.segments) : null), [t]);
 
   async function copyAll() {
     if (!t) return;
@@ -81,6 +85,27 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
           </button>
         </div>
 
+        {/* Talk-to-listen ratio — free, computed locally from real speaking time */}
+        {t && ratio && !ratio.unknown && (
+          <div className="border-b border-gray-100 px-4 py-2">
+            <div className="mb-1 flex items-center justify-between text-[11px] font-medium text-gray-600">
+              <span>Talk-to-listen</span>
+              <span className="tabular-nums">
+                {ratio.userPct}% you · {ratio.remotePct}% them
+              </span>
+            </div>
+            <div className="flex h-2 overflow-hidden rounded-full bg-gray-100">
+              <div className="bg-green-500" style={{ width: `${ratio.userPct}%` }} />
+              <div className="bg-brand-500" style={{ width: `${ratio.remotePct}%` }} />
+            </div>
+            {ratio.userPct > 55 && (
+              <p className="mt-1 text-[11px] text-gray-500">
+                Top closers listen more — aim for closer to 45% you.
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Toolbar */}
         {t && (
           <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-100">
@@ -116,6 +141,21 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
           {t && filtered.length === 0 && query && (
             <p className="text-sm text-gray-400 italic">No matches.</p>
           )}
+          {/* AI call analysis — Pro-gated; free users see an upsell */}
+          {t && !query && (
+            <div className="mb-3">
+              <PaywallGate feature="ai_analysis">
+                <div className="rounded-lg border border-brand-100 bg-brand-50 p-3">
+                  <p className="text-xs font-semibold text-brand-800">AI call analysis</p>
+                  <p className="mt-0.5 text-[11px] text-gray-600">
+                    Ask Claude to break down this call — objections, talk ratio, and what to improve —
+                    through your connected MCP. Use “Copy all”, then ask Claude about it.
+                  </p>
+                </div>
+              </PaywallGate>
+            </div>
+          )}
+
           {t && (
             <div className="space-y-2 text-sm">
               {filtered.map((s, i) => (

@@ -17,10 +17,24 @@ const SettingsSchema = z.object({
   hubspotToken: z.string().min(1).optional(),
   hubspotPortalId: z.string().min(1).optional(),
   deepgramApiKey: z.string().min(1).optional(),
+  deepgramModel: z.string().min(1).optional(),
   transcriptFolderConfigured: z.boolean().optional(),
   incomingEnabled: z.boolean().optional(),
   forwardEnabled: z.boolean().optional(),
   forwardNumber: z.string().optional(),
+
+  // v1a — extension prefs + recording (all optional, back-compat with older installs).
+  clickToCallEnabled: z.boolean().optional(),
+  floatingIconEnabled: z.boolean().optional(),
+  smartCopyEnabled: z.boolean().optional(),
+  lastCalledNumber: z.string().optional(),
+  recordOutgoing: z.boolean().optional(),
+  recordIncoming: z.boolean().optional(),
+  recordingConsentAck: z.boolean().optional(),
+  // True once provisionMessagingAddon() has deployed the SMS + recording-status
+  // (+ delete-recording) Functions and set RECORDING_CALLBACK. Recording can't be
+  // enabled before this — otherwise Twilio records with no ingest callback.
+  messagingProvisioned: z.boolean().optional(),
 });
 
 const CallRecordSchema = z.object({

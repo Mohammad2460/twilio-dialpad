@@ -23,6 +23,8 @@ export interface DeepgramSessionOptions {
   onError?: (err: Error) => void;
   /** Optional language hint, default 'en-US'. */
   language?: string;
+  /** Deepgram model id, default 'nova-2'. User-selectable in settings. */
+  model?: string;
 }
 
 interface DeepgramAlternative {
@@ -62,7 +64,7 @@ export class DeepgramSession {
     // Deepgram auto-detects WebM containers when `encoding` is omitted.
     // Specifying `encoding=opus` makes DG expect raw opus — mismatch = silent decode failure.
     const params = new URLSearchParams({
-      model: 'nova-2',
+      model: this.opts.model ?? 'nova-2',
       language,
       channels: '2',
       multichannel: 'true',
@@ -152,6 +154,7 @@ export class DeepgramSession {
       speaker,
       text,
       isFinal: !!msg.is_final,
+      durationMs: typeof msg.duration === 'number' ? Math.round(msg.duration * 1000) : undefined,
     });
   }
 

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useCallStore } from './stores/call-store';
 import { useDevice } from './hooks/use-device';
 import { track } from '@shared/telemetry';
@@ -10,6 +10,10 @@ import { CallHistory } from './components/CallHistory';
 import { AutoDialer } from './components/AutoDialer';
 import { NotConfigured } from './components/NotConfigured';
 import { FolderPermissionBanner } from './components/FolderPermissionBanner';
+import { SettingsTab } from './components/SettingsTab';
+import { ProTab } from './components/ProTab';
+import { SmsTab } from './components/SmsTab';
+import { EmailCaptureSheet } from './components/EmailCaptureSheet';
 
 export function App() {
   useDevice();
@@ -17,11 +21,27 @@ export function App() {
   const activeCall = useCallStore((s) => s.activeCall);
   const view = useCallStore((s) => s.view);
 
+  // null = loading; true = show capture sheet; false = hide
+  const [showEmailCapture, setShowEmailCapture] = useState<boolean | null>(null);
+
   // Telemetry: the side panel mounting = the user opened the dialpad. Fire once
   // per mount (empty deps) — separates "installed, never opened" from "bailed".
   useEffect(() => {
     track('panel_opened');
   }, []);
+
+  // Check whether to show email capture once settings are confirmed configured
+  useEffect(() => {
+    if (!settings) return;
+    // Only evaluate once — guard against re-runs if settings re-emits mid-session
+    if (showEmailCapture !== null) return;
+    chrome.storage.local
+      .get(['emailCaptured', 'emailPromptSkipped'])
+      .then(({ emailCaptured, emailPromptSkipped }) => {
+        setShowEmailCapture(!emailCaptured && !emailPromptSkipped);
+      })
+      .catch(() => setShowEmailCapture(false));
+  }, [settings]);
 
   if (!settings) return <NotConfigured />;
 
@@ -30,14 +50,25 @@ export function App() {
       <StatusBar />
       <FolderPermissionBanner />
       <main className="flex-1 overflow-y-auto">
+        {showEmailCapture && (
+          <div className="p-3">
+            <EmailCaptureSheet onDone={() => setShowEmailCapture(false)} />
+          </div>
+        )}
         {activeCall?.phase === 'ringing' && activeCall.direction === 'in' ? (
           <IncomingCall />
         ) : activeCall ? (
           <CallScreen />
         ) : view === 'history' ? (
           <CallHistory />
+        ) : view === 'sms' ? (
+          <SmsTab />
         ) : view === 'autodial' ? (
           <AutoDialer />
+        ) : view === 'settings' ? (
+          <SettingsTab />
+        ) : view === 'pro' ? (
+          <ProTab />
         ) : (
           <Dialpad />
         )}
@@ -57,11 +88,17 @@ function Footer() {
       <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>
         Keypad
       </TabButton>
-      <TabButton active={view === 'autodial'} onClick={() => setView('autodial')}>
-        Auto-dial
+      <TabButton active={view === 'sms'} onClick={() => setView('sms')}>
+        SMS
       </TabButton>
       <TabButton active={view === 'history'} onClick={() => setView('history')}>
         Recents
+      </TabButton>
+      <TabButton active={view === 'pro'} onClick={() => setView('pro')}>
+        Pro
+      </TabButton>
+      <TabButton active={view === 'settings'} onClick={() => setView('settings')}>
+        Settings
       </TabButton>
     </nav>
   );

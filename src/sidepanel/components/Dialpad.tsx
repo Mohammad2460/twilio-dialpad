@@ -14,15 +14,36 @@ const KEYS: { d: string; sub?: string }[] = [
 
 export function Dialpad() {
   const [input, setInput] = useState('');
+  const [lastCalled, setLastCalled] = useState<string | null>(null);
   const deviceState = useCallStore((s) => s.deviceState);
   const callerIds = useCallStore((s) => s.callerIds);
   const selectedCallerId = useCallStore((s) => s.selectedCallerId);
   const setSelectedCallerIdStore = useCallStore((s) => s.setSelectedCallerId);
   const setCallerIdsStore = useCallStore((s) => s.setCallerIds);
+  const setView = useCallStore((s) => s.setView);
   const ready = deviceState === 'registered';
 
   // Paste-to-dial — only show chip when input is empty.
   const { suggestion, dismiss: dismissSuggestion } = usePasteSuggestion(input.length > 0);
+
+  // Load last-called number for the redial affordance.
+  useEffect(() => {
+    let cancelled = false;
+    storage.getSettings().then((s) => {
+      if (!cancelled) setLastCalled(s?.lastCalledNumber ?? null);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Consume a number queued by the click-to-call bubble.
+  useEffect(() => {
+    chrome.storage.local.get('pendingDial').then(({ pendingDial }) => {
+      if (typeof pendingDial === 'string' && pendingDial) {
+        setInput(pendingDial);
+        chrome.storage.local.remove('pendingDial').catch(() => {});
+      }
+    });
+  }, []);
 
   // Picker state
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -65,6 +86,8 @@ export function Dialpad() {
     if (!target) return;
     try {
       await getManager().startCall(target, selectedCallerId || undefined);
+      setLastCalled(target);
+      void storage.updateSettings({ lastCalledNumber: target });
     } catch (e) {
       alert(e instanceof Error ? e.message : String(e));
     }
@@ -134,6 +157,32 @@ export function Dialpad() {
 
   return (
     <div className="flex h-full flex-col p-4">
+
+      {/* ── Top row: settings gear + auto-dial entry ── */}
+      <div className="mb-1 flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setView('settings')}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100"
+          title="Settings"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.53 1.53 0 01-2.29.95c-1.37-.84-2.94.73-2.1 2.1.55.9.18 2.07-.95 2.29-1.56.38-1.56 2.6 0 2.98a1.53 1.53 0 01.95 2.29c-.84 1.37.73 2.94 2.1 2.1a1.53 1.53 0 012.29.95c.38 1.56 2.6 1.56 2.98 0a1.53 1.53 0 012.29-.95c1.37.84 2.94-.73 2.1-2.1a1.53 1.53 0 01.95-2.29c1.56-.38 1.56-2.6 0-2.98a1.53 1.53 0 01-.95-2.29c.84-1.37-.73-2.94-2.1-2.1a1.53 1.53 0 01-2.29-.95zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+          </svg>
+          Settings
+        </button>
+        <button
+          type="button"
+          onClick={() => setView('autodial')}
+          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-brand-600 hover:bg-brand-50"
+          title="Open the auto-dialer"
+        >
+          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+            <path d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" />
+          </svg>
+          Auto-dial
+        </button>
+      </div>
 
       {/* ── Caller ID Picker ── */}
       {callerIds.length > 0 && (
@@ -296,6 +345,24 @@ export function Dialpad() {
                 <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" />
               </svg>
             </span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Redial chip — last called number, when nothing typed ── */}
+      {!input && !suggestion && lastCalled && (
+        <div className="mb-2 flex justify-center">
+          <button
+            type="button"
+            onClick={() => setInput(lastCalled)}
+            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 transition hover:border-gray-300 hover:bg-gray-100"
+            title="Redial last number"
+          >
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+              <path fillRule="evenodd" d="M10 3a7 7 0 100 14 7 7 0 000-14zm0-2a9 9 0 110 18 9 9 0 010-18z" clipRule="evenodd" opacity="0" />
+              <path d="M4 2v4h4M4.6 5.5A6 6 0 1110 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Redial <span className="tabular-nums">{formatForDisplay(lastCalled)}</span>
           </button>
         </div>
       )}

@@ -17,3 +17,6 @@ backend/tsconfig.tsbuildinfo
 supabase/
 backend/supabase/
 **/.temp/
+
+# SEO/ASO working docs (local only)
+docs/seo/

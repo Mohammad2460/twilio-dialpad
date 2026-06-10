@@ -43,6 +43,9 @@ export interface TranscriptSegment {
   text: string;
   /** Only final segments are persisted. Interim flow live to UI only. */
   isFinal: boolean;
+  /** Spoken duration of this segment in ms (from Deepgram `duration`). Used for
+   *  accurate talk-to-listen ratio (sum per speaker). Optional for back-compat. */
+  durationMs?: number;
 }
 
 export interface Transcript {
@@ -95,10 +98,21 @@ export interface Settings {
 
   // Deepgram transcription (optional). Without key → no transcription.
   deepgramApiKey?: string;
+  deepgramModel?: string; // user-selectable Deepgram model id; default 'nova-2'
   transcriptFolderConfigured?: boolean; // true once user picked a folder via showDirectoryPicker
 
   // Incoming call routing (optional, defaults: incoming=true, forward=false)
   incomingEnabled?: boolean;
   forwardEnabled?: boolean;
   forwardNumber?: string;
+
+  // v1a — extension prefs + recording (all optional, back-compat).
+  clickToCallEnabled?: boolean;
+  floatingIconEnabled?: boolean;
+  smartCopyEnabled?: boolean;
+  lastCalledNumber?: string;
+  recordOutgoing?: boolean;
+  recordIncoming?: boolean;
+  recordingConsentAck?: boolean;
+  messagingProvisioned?: boolean;
 }
