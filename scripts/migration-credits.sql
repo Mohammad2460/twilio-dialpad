@@ -115,10 +115,11 @@ BEGIN
 
   v_balance := credit_balance(p_user);
 
+  -- Ledger is audit-only; bucket expiry lives on credit_buckets, not here.
   INSERT INTO credit_ledger
-    (user_id, kind, credits_delta, balance_after, idempotency_key, pricing_version, status, expires_at)
+    (user_id, kind, credits_delta, balance_after, idempotency_key, pricing_version, status)
   VALUES
-    (p_user, p_kind, p_amount, v_balance, p_idem_key, p_pricing_ver, 'settled', p_expires_at);
+    (p_user, p_kind, p_amount, v_balance, p_idem_key, p_pricing_ver, 'settled');
 
   RETURN v_balance;
 END;
