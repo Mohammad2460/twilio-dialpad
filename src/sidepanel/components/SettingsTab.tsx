@@ -177,11 +177,21 @@ function AISection({
     setTimeout(() => setSaved(false), 2000);
   }
 
+  const managedOn = !!settings.managedTranscription;
+
   return (
     <Section title="AI & Transcription">
-      <div>
+      <Toggle
+        label="Managed transcription"
+        description="Use our transcription — no Deepgram key needed. Metered by AI credits. Off = bring your own key (free)."
+        checked={managedOn}
+        onChange={(v) => onUpdate({ managedTranscription: v })}
+      />
+
+      <div className={managedOn ? 'opacity-50' : ''}>
         <label className="block text-xs font-medium text-gray-700">
           Deepgram API key {connected && <span className="text-green-600">· connected</span>}
+          {managedOn && <span className="text-gray-400"> · optional (managed on)</span>}
         </label>
         <input
           type="password"
