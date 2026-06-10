@@ -5,6 +5,8 @@ import type { Settings } from '@shared/types';
 import { maskSid, provisionMessagingAddon } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount } from '@shared/cloud';
+import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
+import { PaywallGate } from './PaywallGate';
 
 const DEEPGRAM_MODELS = [
   ['nova-3', 'Nova-3 — most accurate'],
@@ -33,6 +35,7 @@ export function SettingsTab() {
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
       <AISection settings={settings} onUpdate={update} />
       <EnableSmsSection settings={settings} />
+      <RecordingsSection settings={settings} onUpdate={update} />
       <ExtensionPrefsSection settings={settings} onUpdate={update} />
       <AccountSection settings={settings} />
       <HelpSection />
@@ -360,6 +363,94 @@ function EnableSmsSection({ settings }: { settings: Settings }) {
         {busy ? 'Working…' : 'Enable SMS'}
       </button>
       {status && <p className="text-xs text-gray-600 break-words">{status}</p>}
+    </Section>
+  );
+}
+
+function RecordingsSection({
+  settings,
+  onUpdate,
+}: {
+  settings: Settings;
+  onUpdate: (p: Partial<Settings>) => Promise<void>;
+}) {
+  const [recs, setRecs] = useState<Recording[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const recordOn = settings.recordOutgoing ?? false;
+  const canConfig = !!(settings.serviceSid && settings.environmentSid && settings.configSecret);
+
+  useEffect(() => {
+    let cancelled = false;
+    ensureCloudAccount()
+      .then(async (a) => {
+        if (cancelled) return;
+        setUserId(a.userId);
+        setRecs(await listRecordings(a.userId));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function toggle(v: boolean) {
+    if (v && !settings.recordingConsentAck) {
+      const ok = confirm(
+        'Recording may require all-party consent where you operate. You are responsible for complying with local law. Enable call recording?',
+      );
+      if (!ok) return;
+    }
+    setBusy(true);
+    try {
+      await pushConfig(settings, { recordOutgoing: v });
+      await onUpdate({ recordOutgoing: v, recordingConsentAck: settings.recordingConsentAck || v });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function del(id: string) {
+    if (!userId || !confirm('Delete this recording permanently?')) return;
+    if (await deleteRecording(userId, id)) setRecs((r) => r.filter((x) => x.id !== id));
+  }
+
+  return (
+    <Section title="Call recording (Pro)">
+      <PaywallGate feature="recording">
+        <div className="space-y-3">
+          {canConfig ? (
+            <Toggle
+              label="Record outgoing calls"
+              description="Plays a recording notice, then records. You're responsible for consent laws."
+              checked={recordOn}
+              onChange={toggle}
+            />
+          ) : (
+            <p className="text-xs text-gray-500">Run “Enable SMS” / setup first to provision recording.</p>
+          )}
+          {busy && <p className="text-xs text-gray-400">Saving…</p>}
+          <div className="space-y-2">
+            {recs.length === 0 && <p className="text-xs text-gray-400">No recordings yet.</p>}
+            {recs.map((r) => (
+              <div key={r.id} className="rounded-md border border-gray-100 p-2">
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>
+                    {new Date(r.createdAt).toLocaleString()}
+                    {r.durationSec ? ` · ${r.durationSec}s` : ''}
+                  </span>
+                  <button type="button" onClick={() => del(r.id)} className="text-red-600 hover:underline">
+                    Delete
+                  </button>
+                </div>
+                {r.url && <audio controls src={r.url} className="mt-1 w-full" />}
+              </div>
+            ))}
+          </div>
+        </div>
+      </PaywallGate>
     </Section>
   );
 }

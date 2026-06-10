@@ -4,6 +4,7 @@ export interface ConfigPatch {
   incomingEnabled?: boolean;
   forwardEnabled?: boolean;
   forwardNumber?: string;
+  recordOutgoing?: boolean;
 }
 
 export interface ConfigResponse {

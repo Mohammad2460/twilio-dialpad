@@ -94,7 +94,16 @@ exports.handler = function (context, event, callback) {
     return callback(null, twiml);
   }
 
-  const dial = twiml.dial({ callerId: callerId, answerOnBridge: true, timeout: 30 });
+  const recordOn = String(context.RECORD_OUTGOING || 'false').toLowerCase() === 'true';
+  if (recordOn) {
+    twiml.say({ voice: 'alice' }, 'This call may be recorded.');
+  }
+  const dialOpts = { callerId: callerId, answerOnBridge: true, timeout: 30 };
+  if (recordOn) {
+    dialOpts.record = 'record-from-answer-dual';
+    if (context.RECORDING_CALLBACK) dialOpts.recordingStatusCallback = context.RECORDING_CALLBACK;
+  }
+  const dial = twiml.dial(dialOpts);
   if (/^\\+?\\d{6,}$/.test(to.replace(/[\\s\\-()]/g, ''))) {
     dial.number(to);
   } else {
@@ -178,6 +187,9 @@ exports.handler = async function (context, event, callback) {
     // set placeholder 'none' — /voice treats anything falsy/non-E.164 as no forward.
     if (typeof event.forwardNumber === 'string') {
       updates.FORWARD_NUMBER = event.forwardNumber.trim() || 'none';
+    }
+    if (typeof event.recordOutgoing === 'boolean' || event.recordOutgoing === 'true' || event.recordOutgoing === 'false') {
+      updates.RECORD_OUTGOING = String(event.recordOutgoing);
     }
 
     if (Object.keys(updates).length === 0) {
@@ -301,5 +313,43 @@ exports.handler = async function (context, event, callback) {
     twiml.message('Reply STOP to unsubscribe. Msg & data rates may apply.');
   }
   return callback(null, twiml);
+};
+`.trim();
+
+export const RECORDING_STATUS_JS = `
+/**
+ * recordingStatusCallback target. On a completed recording, fetch the media
+ * (API-Key auth) and stream it to our backend's signed upload URL. The backend
+ * holds no Twilio creds, so the media transfer happens here.
+ */
+exports.handler = async function (context, event, callback) {
+  try {
+    const recordingSid = (event.RecordingSid || '').toString();
+    const recordingUrl = (event.RecordingUrl || '').toString();
+    const callSid = (event.CallSid || '').toString();
+    const durationSec = parseInt(event.RecordingDuration || '0', 10) || 0;
+    if (!recordingSid || !recordingUrl) return callback(null, '');
+    const backend = context.BACKEND_URL || 'https://dialler-mcp.vercel.app';
+
+    const ing = await fetch(backend + '/api/recordings/ingest', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ accountSid: context.ACCOUNT_SID, secret: context.CONFIG_SECRET, callSid: callSid, recordingSid: recordingSid, durationSec: durationSec }),
+    });
+    const ingData = await ing.json().catch(function () { return {}; });
+    if (!ing.ok || !ingData.uploadUrl) { console.error('[recording-status] ingest failed', ing.status, ingData); return callback(null, ''); }
+
+    const auth = Buffer.from(context.API_KEY_SID + ':' + context.API_KEY_SECRET).toString('base64');
+    const media = await fetch(recordingUrl + '.mp3', { headers: { Authorization: 'Basic ' + auth } });
+    if (!media.ok) { console.error('[recording-status] media download failed', media.status); return callback(null, ''); }
+    const buf = Buffer.from(await media.arrayBuffer());
+
+    const put = await fetch(ingData.uploadUrl, { method: 'PUT', headers: { 'Content-Type': 'audio/mpeg' }, body: buf });
+    if (!put.ok) console.error('[recording-status] upload failed', put.status, await put.text().catch(function () { return ''; }));
+    return callback(null, '');
+  } catch (e) {
+    console.error('[recording-status]', e);
+    return callback(null, '');
+  }
 };
 `.trim();
