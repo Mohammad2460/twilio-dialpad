@@ -7,7 +7,7 @@ import {
   enforceLlmCaps,
   CapExceededError,
   type PricingConfig,
-} from '../lib/credits';
+} from '../lib/pricing';
 
 // Mirror of seeded pricing_config v1 (safe defaults). Pure-function tests only —
 // no DB. The ledger/concurrency/idempotency/expiry behavior lives in plpgsql and
