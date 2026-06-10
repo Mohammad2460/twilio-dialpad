@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
 import { corsHeaders } from '@/lib/cors';
 import { authenticate } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
@@ -8,6 +9,8 @@ import {
   estimateLlmCredits,
   enforceLlmCaps,
   costFromAnthropicUsage,
+  costFromOpenAiUsage,
+  providerForModel,
   usdToCredits,
   reserve,
   settle,
@@ -15,6 +18,7 @@ import {
   CapExceededError,
   InsufficientCreditsError,
   type AnthropicUsage,
+  type OpenAiUsage,
 } from '@/lib/credits';
 
 export const runtime = 'nodejs';
@@ -28,7 +32,7 @@ function j(body: unknown, status = 200) {
 }
 
 /** Models a free user may call. Premium models require Pro (or top-up credits). */
-const FREE_MODELS = new Set(['claude-haiku-4-5']);
+const FREE_MODELS = new Set(['claude-haiku-4-5', 'gpt-5-mini']);
 
 async function hasPro(userId: string): Promise<boolean> {
   const { data } = await supabase.rpc('user_has_access', { uid: userId });
@@ -85,7 +89,9 @@ export async function POST(req: NextRequest) {
   const turns = Array.isArray(body.messages) ? body.messages : [];
   if (turns.length === 0) return j({ error: 'no_messages' }, 400);
 
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+  const provider = providerForModel(model);
+  const apiKey =
+    provider === 'openai' ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return j({ error: 'ai_unavailable' }, 503);
 
   const system =
@@ -120,8 +126,6 @@ export async function POST(req: NextRequest) {
     throw e;
   }
 
-  const client = new Anthropic({ apiKey });
-
   // Stream the completion to the client; accumulate usage for settlement.
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
@@ -129,17 +133,40 @@ export async function POST(req: NextRequest) {
       const send = (event: string, data: unknown) =>
         controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
       try {
-        const ant = client.messages.stream({
-          model,
-          max_tokens: maxOut,
-          system,
-          messages: turns.map((m) => ({ role: m.role, content: m.content })),
-        });
-        ant.on('text', (delta) => send('delta', { text: delta }));
-        const final = await ant.finalMessage();
+        // Vendor-specific streaming; both paths must yield a real USD cost from
+        // the API's own usage object (never an estimate) for settlement.
+        let vendorUsd: number;
+        if (provider === 'openai') {
+          const oai = new OpenAI({ apiKey });
+          const completion = await oai.chat.completions.create({
+            model,
+            max_completion_tokens: maxOut,
+            stream: true,
+            stream_options: { include_usage: true },
+            messages: [
+              { role: 'system', content: system },
+              ...turns.map((m) => ({ role: m.role, content: m.content })),
+            ],
+          });
+          let usage: OpenAiUsage = {};
+          for await (const chunk of completion) {
+            const delta = chunk.choices[0]?.delta?.content;
+            if (delta) send('delta', { text: delta });
+            if (chunk.usage) usage = chunk.usage as OpenAiUsage;
+          }
+          vendorUsd = costFromOpenAiUsage(usage, model, pricing);
+        } else {
+          const ant = new Anthropic({ apiKey }).messages.stream({
+            model,
+            max_tokens: maxOut,
+            system,
+            messages: turns.map((m) => ({ role: m.role, content: m.content })),
+          });
+          ant.on('text', (delta) => send('delta', { text: delta }));
+          const final = await ant.finalMessage();
+          vendorUsd = costFromAnthropicUsage(final.usage as AnthropicUsage, model, pricing);
+        }
 
-        const usage = final.usage as AnthropicUsage;
-        const vendorUsd = costFromAnthropicUsage(usage, model, pricing);
         const actualCredits = usdToCredits(vendorUsd, pricing);
         const balance = await settle(requestId, actualCredits, vendorUsd, model);
         send('done', { credits: actualCredits, balance });

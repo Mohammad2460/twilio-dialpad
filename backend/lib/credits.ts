@@ -21,14 +21,16 @@ import { InsufficientCreditsError, type PricingConfig } from './pricing';
 export {
   usdToCredits,
   costFromAnthropicUsage,
+  costFromOpenAiUsage,
   costFromDeepgramMinutes,
   estimateLlmCredits,
   estimateTranscriptionCredits,
   enforceLlmCaps,
+  providerForModel,
   InsufficientCreditsError,
   CapExceededError,
 } from './pricing';
-export type { PricingConfig, AnthropicUsage } from './pricing';
+export type { PricingConfig, AnthropicUsage, OpenAiUsage, LlmProvider } from './pricing';
 
 // ── Pricing config (cached briefly; it changes rarely and is request-hot) ──────
 let cached: { cfg: PricingConfig; at: number } | null = null;

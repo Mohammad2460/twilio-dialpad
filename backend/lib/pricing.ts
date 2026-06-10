@@ -28,6 +28,20 @@ export interface AnthropicUsage {
   cache_read_input_tokens?: number;
 }
 
+/** OpenAI Chat Completions usage shape (the fields that bill). */
+export interface OpenAiUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+}
+
+export type LlmProvider = 'anthropic' | 'openai';
+
+/** Route a model id to its vendor. `gpt-*` → OpenAI, everything else → Anthropic. */
+export function providerForModel(model: string): LlmProvider {
+  return model.startsWith('gpt') ? 'openai' : 'anthropic';
+}
+
 export class InsufficientCreditsError extends Error {
   constructor(public have?: number, public need?: number) {
     super('insufficient_credits');
@@ -63,6 +77,18 @@ export function costFromAnthropicUsage(
   return (
     (inTok * rate.in + outTok * rate.out + cw * rate.cache_write + cr * rate.cache_read) / 1_000_000
   );
+}
+
+/** OpenAI token usage → USD using the active per-model rates (per 1M tokens).
+ *  Cached prompt tokens bill at the cache_read rate; the rest at the input rate. */
+export function costFromOpenAiUsage(usage: OpenAiUsage, model: string, p: PricingConfig): number {
+  const rate = p.llm[model];
+  if (!rate) throw new Error(`no pricing for model ${model}`);
+  const prompt = usage.prompt_tokens ?? 0;
+  const cached = usage.prompt_tokens_details?.cached_tokens ?? 0;
+  const uncached = Math.max(0, prompt - cached);
+  const outTok = usage.completion_tokens ?? 0;
+  return (uncached * rate.in + outTok * rate.out + cached * rate.cache_read) / 1_000_000;
 }
 
 /** Deepgram billed minutes → USD. Channels from config (mono=1, stereo=2). */

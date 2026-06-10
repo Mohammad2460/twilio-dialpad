@@ -9,9 +9,10 @@ import {
   type ChatTurn,
 } from '@shared/credits';
 
-/** Models offered in the picker. Haiku is the free-tier default; the rest are Pro. */
+/** Models offered in the picker. Free-tier defaults first; the rest are Pro. */
 const MODELS: { id: string; label: string; pro: boolean }[] = [
   { id: 'claude-haiku-4-5', label: 'Haiku · fastest', pro: false },
+  { id: 'gpt-5-mini', label: 'GPT-5 mini · fast', pro: false },
   { id: 'claude-sonnet-4-6', label: 'Sonnet · sharper', pro: true },
   { id: 'claude-opus-4-8', label: 'Opus · deepest', pro: true },
 ];
@@ -165,7 +166,7 @@ export function AiChatbox({ transcript }: { transcript: string }) {
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && ask()}
-          placeholder={userId ? 'Ask Claude about this call…' : 'Set up your account first'}
+          placeholder={userId ? 'Ask AI about this call…' : 'Set up your account first'}
           disabled={!userId || streaming}
           className="flex-1 text-sm border border-gray-300 rounded px-3 py-2 disabled:bg-gray-50"
         />
