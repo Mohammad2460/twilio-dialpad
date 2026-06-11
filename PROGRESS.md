@@ -5,9 +5,9 @@
 
 _Last updated: 2026-06-11._
 
-## Status: Batch 2 onboarding overhaul CODE-COMPLETE on `claude/romantic-feistel-5fb77a` (PR pending). Batch 1 shipped via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6); v2 via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+## Status: Batch 2 onboarding overhaul SHIPPED — merged to `main` via [PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8). Prod Supabase migration applied; Vercel auto-deploys on merge. Batch 1 via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6); v2 via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
 
-### Batch 2 — onboarding overhaul (CODE-COMPLETE, needs prod migration + deploy + manual e2e)
+### Batch 2 — onboarding overhaul ([PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8), SHIPPED)
 _Spec: `docs/superpowers/specs/2026-06-11-onboarding-overhaul-design.md` · Plan: `docs/superpowers/plans/2026-06-11-onboarding-overhaul.md`._
 
 What changed (all typechecks 0 errors; 34 ext + 11 backend tests pass; `npx vite build` ✓):
@@ -19,11 +19,15 @@ What changed (all typechecks 0 errors; 34 ext + 11 backend tests pass; `npx vite
 - **SMS send / recording media+delete / inbound SMS** moved to backend for backend-voice users (use stored API key; inbound SMS accepts `?u`/`?k` capability auth alongside legacy body `secret`).
 - **Fixed `npm test`** (broken by the crx 2.5.0 upgrade): dedicated `vitest.config.ts` (no crx plugin, `node` env — happy-dom hung vitest 2.x).
 
-**OUTSTANDING (user actions — code is done):**
-- [ ] **Apply `scripts/migration-backend-voice.sql` to prod Supabase `xyhkklqnbxoucnjlckaz`** (denied to the agent as a prod-DB change — apply via dashboard or authorize). Adds voice-config columns + `user_is_paid`/`user_is_trialing`. Backend voice routes 409/500 until applied.
-- [ ] Deploy backend to Vercel (new routes).
-- [ ] Manual e2e: fresh install → setup in seconds → first call connects → trial popup → (simulate `trial_ends_at` ~2d) banner → checkout. Verify TwiML App VoiceUrl = `…/api/voice/twiml/<uid>?k=…`.
-- [ ] `pnpm build` uses bare `tsc` — fails in this worktree (PATH); `npx tsc --noEmit && npx vite build` works. Non-blocking.
+**DONE:**
+- [x] Prod Supabase migration `scripts/migration-backend-voice.sql` applied + verified (11 cols, `user_is_paid`/`user_is_trialing`; `user_has_access` preserved).
+- [x] Backend deployed to Vercel via merge (git-integration auto-deploy of `main`).
+- [x] Code review: 1 Important finding (SSRF/credential-leak in recording ingest — API-key secret could be exfiltrated by a forged callback) fixed by pinning the download host to `*.twilio.com`.
+
+**OUTSTANDING (user action):**
+- [ ] Manual e2e on prod: fresh install → setup in seconds → first call connects → trial popup → (simulate `trial_ends_at` ~2d) banner → checkout. Verify the TwiML App VoiceUrl = `…/api/voice/twiml/<uid>?k=…` and the number's Voice = that app.
+- [ ] Existing trial users now lose SMS/recording/Claude (light-trial gating) + gain free managed transcription — expected; watch for confusion.
+- [ ] `pnpm build` uses bare `tsc` (fails in worktree PATH); `npx tsc --noEmit && npx vite build` works. Non-blocking cleanup.
 
 ### Batch 1 status (shipped)
 
