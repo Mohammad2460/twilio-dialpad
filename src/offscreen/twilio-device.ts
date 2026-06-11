@@ -157,14 +157,17 @@ class TranscriptionController {
       _transcriptSegmentCb?.(callSid, seg);
     };
 
-    try {
+    // The vendor session open (Deepgram socket / managed JWT mint) is the flaky
+    // step that intermittently left calls with no transcript. Wrap it so we can
+    // retry once on a transient failure before giving up. Call audio is untouched.
+    const startSession = async (): Promise<void> => {
       if (managed) {
         // Managed path (P8.3): our Deepgram key via short-lived JWTs, metered by
         // credits. Stops gracefully at zero balance; never affects the call.
         this.managed = new ManagedTranscription({
           userId: managed.userId,
           callSid,
-          stream: this.mixed.stream,
+          stream: this.mixed!.stream,
           startedAt: this.startedAt,
           model: model ?? 'nova-3',
           onSegment,
@@ -190,17 +193,36 @@ class TranscriptionController {
             _transcriptErrorCb?.(err);
           },
         });
-        await this.session.start(this.mixed.stream);
+        await this.session.start(this.mixed!.stream);
         console.log('[transcription] Deepgram session started');
       }
-    } catch (e) {
-      // Hard failure — clean up streams, surface error, but don't break the call.
-      console.error('[transcription] start failed', e);
-      this.mixed?.dispose();
-      this.mixed = null;
+    };
+
+    try {
+      await startSession();
+    } catch (e1) {
+      // Transient open failure — drop the half-built session and retry once.
+      console.warn('[transcription] session start failed, retrying once', e1);
       this.session = null;
       this.managed = null;
-      _transcriptErrorCb?.(e instanceof Error ? e : new Error(String(e)));
+      await sleep(600);
+      if (this.cancelled) {
+        this.mixed?.dispose();
+        this.mixed = null;
+        this._meta = { callSid, direction, remoteNumber };
+        return;
+      }
+      try {
+        await startSession();
+      } catch (e2) {
+        // Hard failure — clean up streams, surface error, but don't break the call.
+        console.error('[transcription] start failed after retry', e2);
+        this.mixed?.dispose();
+        this.mixed = null;
+        this.session = null;
+        this.managed = null;
+        _transcriptErrorCb?.(e2 instanceof Error ? e2 : new Error(String(e2)));
+      }
     }
 
     // Capture remoteNumber + direction for finalize.
@@ -369,8 +391,10 @@ export class DeviceManager {
             this.transcription = null;
             return;
           }
-          const startOnce = () =>
-            this.transcription!.start(
+          try {
+            // start() handles its own (non-fatal) failures internally, incl. a
+            // one-shot retry of the vendor session. This catch is a final safety net.
+            await this.transcription!.start(
               call,
               callSid,
               direction,
@@ -379,22 +403,9 @@ export class DeviceManager {
               managed ? (model ?? 'nova-3') : model,
               managed,
             );
-          try {
-            await startOnce();
-          } catch (e1) {
-            // Transient connect race (managed-token / Deepgram socket). Retry once.
-            console.warn('[transcription] start failed, retrying once', e1);
-            await sleep(600);
-            try {
-              if (!this.transcription) return; // call may have ended during the wait
-              await startOnce();
-            } catch (e2) {
-              console.warn('[transcription] start failed after retry', e2);
-              this.transcription = null;
-              _transcriptErrorCb?.(
-                e2 instanceof Error ? e2 : new Error('Transcription unavailable for this call'),
-              );
-            }
+          } catch (e) {
+            console.warn('[transcription] start threw unexpectedly', e);
+            this.transcription = null;
           }
         })();
       }

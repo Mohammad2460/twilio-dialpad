@@ -37,6 +37,11 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [checkoutErr, setCheckoutErr] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  // Abort any in-flight stream on unmount (tab switch / context change) so we stop
+  // streaming + billing instead of leaking the request.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +100,8 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
 
     // Optimistic empty assistant turn we append deltas to.
     setTurns((t) => [...t, { role: 'assistant', content: '' }]);
+    const ctrl = new AbortController();
+    abortRef.current = ctrl;
     let acc = '';
     try {
       for await (const ev of streamChat(userId, {
@@ -103,6 +110,7 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
         mode: transcript ? 'call' : 'general',
         messages: next,
         idempotencyKey: crypto.randomUUID(),
+        signal: ctrl.signal,
       })) {
         if (ev.type === 'delta') {
           acc += ev.text;
@@ -126,8 +134,15 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
           setTurns((t) => (t[t.length - 1]?.content ? t : t.slice(0, -1)));
         }
       }
+    } catch (e) {
+      // Aborted on unmount/context-switch — benign. Surface anything else.
+      if ((e as { name?: string })?.name !== 'AbortError') {
+        setNotice({ kind: 'error', msg: 'AI request failed. Try again.' });
+        setTurns((t) => (t[t.length - 1]?.content ? t : t.slice(0, -1)));
+      }
     } finally {
       setStreaming(false);
+      abortRef.current = null;
     }
   }
 
