@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { authenticateUser } from '@/lib/auth';
 import { deleteTwilioRecording } from '@/lib/twilio-recording';
+import { deleteRecording as deleteTwilioRecordingApiKey } from '@/lib/twilio-server';
+import { decryptSecret } from '@/lib/crypto';
 
 export const runtime = 'nodejs';
 
@@ -14,8 +16,9 @@ function j(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: corsHeaders });
 }
 
+/** Paid gate — recording is a paid feature, NOT included in the trial. */
 async function requireAccess(userId: string): Promise<boolean> {
-  const { data } = await supabase.rpc('user_has_access', { uid: userId });
+  const { data } = await supabase.rpc('user_is_paid', { uid: userId });
   return !!data;
 }
 
@@ -79,9 +82,28 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ u
     .maybeSingle();
   if (!row) return j({ error: 'not_found' }, 404);
 
-  // Delete the Twilio-side copy through the user's Function (best-effort), then
-  // remove our storage object + row so media lives nowhere we control after this.
-  await deleteTwilioRecording(userId, row.recording_sid);
+  // Delete the Twilio-side copy (best-effort): backend-voice users delete via the
+  // stored API key; legacy users delete through their Function. Then remove our
+  // storage object + row so media lives nowhere we control after this.
+  const { data: vc } = await supabase
+    .from('users')
+    .select('backend_voice, api_key_sid, api_key_secret_enc, twilio_account_sid')
+    .eq('id', userId)
+    .single();
+  if (vc?.backend_voice && vc.api_key_sid && vc.api_key_secret_enc && vc.twilio_account_sid) {
+    try {
+      await deleteTwilioRecordingApiKey(
+        vc.api_key_sid,
+        decryptSecret(vc.api_key_secret_enc),
+        vc.twilio_account_sid,
+        row.recording_sid,
+      );
+    } catch (e) {
+      console.error('[recordings DELETE] twilio delete failed (non-fatal)', e);
+    }
+  } else {
+    await deleteTwilioRecording(userId, row.recording_sid);
+  }
   await supabase.storage.from('recordings').remove([row.storage_path]).catch?.(() => undefined);
   const { error } = await supabase.from('recordings').delete().eq('id', id).eq('user_id', userId);
   if (error) return j({ error: 'delete_failed' }, 500);

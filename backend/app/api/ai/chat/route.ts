@@ -37,7 +37,7 @@ function j(body: unknown, status = 200) {
 const FREE_MODELS = new Set(['gpt-5-mini']);
 
 async function hasPro(userId: string): Promise<boolean> {
-  const { data } = await supabase.rpc('user_has_access', { uid: userId });
+  const { data } = await supabase.rpc('user_is_paid', { uid: userId });
   return !!data;
 }
 
