@@ -1,53 +1,31 @@
 # PROGRESS — Twilio Dialpad
 
-> Canonical handoff. Source of truth = git history + the plan.
-> Plan: `~/.claude/plans/generic-sauteeing-willow.md`
+> Canonical handoff. Source of truth = git history + `CLAUDE.md`.
+> To resume in a new session: read this file + `CLAUDE.md` + `git log origin/main..HEAD`.
+
+_Last updated: 2026-06-11._
+
+## Status: v2 (managed AI + credits) SHIPPED — merged to `main` via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+
+### v2 — Phase 8: managed AI + credits (DONE)
+- Credit ledger (append-only `credit_ledger` + spendable `credit_buckets` + versioned `pricing_config`); atomic oversell-safe plpgsql; reserve→settle→refund w/ idempotency. Applied to prod Supabase `xyhkklqnbxoucnjlckaz`.
+- Managed AI chatbox, **multi-provider**: `gpt-*` → OpenAI, else Anthropic. **Free tier = `gpt-5-mini` only**; all Claude models Pro-gated (Claude vendor cost only fires for paying users).
+- Managed Deepgram transcription via temp-token JWTs (BYO free OR managed credits).
+- Dodo: Pro $9/mo monthly grant + PWYW one-time top-ups; webhook grants gated on `payment.succeeded`, idempotent.
+- Pricing: `1 cr = $0.01`, `credits = max(min_charge, ceil(vendor_usd × 3 × 100))`. Conservative defaults (markup 3, min_charge 1, monthly_grant 1000, free_grant 50) — tune from real burn data in `pricing_config`.
+- Vercel keys set: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`. **Anthropic account not yet funded** → Claude fails gracefully (refund + "AI request failed"); GPT-5 mini works.
+- Reviews closed: superpowers (C1 OpenAI no-usage settle) + Codex (P1 seed gpt-5-mini, P1 gate top-up on payment success). Backend + extension tsc 0 errors.
+
+### Build fix (2026-06-11)
+- `@crxjs/vite-plugin` `2.0.0-beta.28` hung `vite build` indefinitely → upgraded to **2.5.0**; deduped rollup inputs (sidepanel/options come from the manifest); disabled sourcemaps. Build now completes (~75s). Note: `transforming (1) @crx/manifest` line is static in crx mode — not a hang.
+
+### Outstanding (user actions, not code)
+- Fund Anthropic account → Claude models go live for Pro users.
+- One live test-mode Dodo top-up before promoting.
 
 ---
 
-## v2 — Managed AI + credits (Phase 8) — IN PROGRESS
-
-_Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/specs/2026-06-10-v2-managed-ai-credits-design.md`._
-
-**Locked:** managed AI = Claude family (Haiku default free; Sonnet/Opus Pro); OpenRouter deferred; **managed transcription (P8.3) BUILT** via Deepgram `/auth/grant` temp-token JWTs (Vercel-native, no WS relay) — BOTH modes now per plan: BYO Deepgram (free) OR managed (our key, ~2.5 cr/min mono). Safe conservative pricing defaults (N=1000, mono, free-grant 50) pending real burn data.
-**Invariants held:** calls always BYO-Twilio (credits meter AI only) · Auth Token never persisted · backend = source of truth (row-locked ledger) · marketing consent separate/default-OFF · zero balance never drops a call. **Additive only — existing v1 users: no re-login, no breakage, managed mode opt-in.**
-
-| Phase | State |
-|---|---|
-| Spec | ✅ `3e64e68` |
-| **P8.1** ledger schema + atomic plpgsql (reserve/settle/refund/grant/expire, oversell-safe) | ✅ code `d615ba8` — **NOT yet applied to prod** (awaiting explicit approval) |
-| **P8.2** typed billing engine + cost adapters + caps | ✅ `a786998` |
-| **P8.4** `/api/ai/chat` managed Claude chatbox (reserve→settle, Haiku free/Sonnet+Opus Pro) | ✅ code, backend typecheck pending |
-| **P8.5** Dodo webhook grants (monthly+topup, idempotent) + `/api/credits/expire` cron | ✅ code |
-| **P8.6** credit UI: chatbox balance + `CreditsSection` (mounted in all ProTab states, top-up packs) + `/api/credits/[userId]` | ✅ |
-| **P8.3** managed Deepgram transcription (temp-token JWTs, reconnect-per-window, zero-balance stop never drops call) | ✅ built — typecheck 0 errors, credit math verified (~2.5 cr/min mono). Needs `DEEPGRAM_API_KEY` in Vercel for live use |
-| **P8.7** billing math: **13/13 assertions executed + pass**; ledger logic **smoke-tested green in prod** (grant/reserve/settle/refund/expire/reap, idempotency, insufficient) | ✅ |
-| **P8.8** verification: backend + extension typecheck 0 errors; DB smoke green; full extension build | ⏳ (build below; live run blocked on ANTHROPIC_API_KEY) |
-
-**Done since:**
-- [x] Prod migration applied to Supabase `xyhkklqnbxoucnjlckaz` (3 tables, 6 functions, pricing v1). **Smoke test caught + fixed a real bug** (`grant_credits` wrote `expires_at` to the ledger — column lives on buckets). Full reserve/settle/refund/expire/idempotency/insufficient cycle verified green on a throwaway user.
-- [x] Dodo top-up: `ensureTopUpProduct` (self-provisioning 1¢/unit one-time product) + `/api/checkout/topup/[userId]` (pack allowlist 1000/2500/5000) + client `startTopUp` + chatbox upsell.
-- [x] Backend + extension typecheck both 0 errors.
-
-**Code review fixes (all applied + verified):**
-- [x] #1 free-tier grant on device registration (idempotent).
-- [x] #2 `reap_stale_reservations` cron — refunds orphaned holds (prod + smoke-tested).
-- [x] #3 Dodo top-up rewritten to **Pay-What-You-Want + exact `amount`** (cents=credits) per Dodo's dynamic-pricing API — removes the fragile quantity×unit-price assumption. Confirmed against Dodo docs (`pay_what_you_want`, `price` floor, `suggested_price`; checkout `product_cart[].amount`).
-
-**Outstanding v2 (Vercel env + final):**
-- [ ] **`ANTHROPIC_API_KEY`** in Vercel prod — managed chat 503 without it.
-- [ ] **`DEEPGRAM_API_KEY`** (Member+) in Vercel prod — managed transcription 503 without it.
-- [ ] First real top-up self-provisions the PWYW product; confirm one live $10 charge before promoting.
-- [ ] Open PR for `claude/v2-managed-ai` (user: open last).
-- [ ] Mount `CreditBalance` in ProTab/StatusBar (component ready; not yet placed).
-- [ ] Backend unit tests (`credits-math.test.ts`) hang in THIS sandbox (vitest/esbuild stall) — run in CI; math hand-verified + DB smoke green.
-- [ ] Open PR for `claude/v2-managed-ai`.
-
----
-
-## v1 (shipped — `1ab3d24` on main)
-
-_Last updated: 2026-06-10 · branch `claude/musing-meninsky-d95614` · latest commit `503c5de`_
+## v1 (shipped earlier — [PR #3](https://github.com/Mohammad2460/twilio-dialpad/pull/3))
 
 ## Status: v1 COMPLETE — session closed. Working tree clean, branch in sync, CI green.
 
