@@ -12,6 +12,7 @@ import { NotConfigured } from './components/NotConfigured';
 import { FolderPermissionBanner } from './components/FolderPermissionBanner';
 import { SettingsTab } from './components/SettingsTab';
 import { ProTab } from './components/ProTab';
+import { AiTab } from './components/AiTab';
 import { SmsTab } from './components/SmsTab';
 import { EmailCaptureSheet } from './components/EmailCaptureSheet';
 
@@ -69,6 +70,8 @@ export function App() {
           <SettingsTab />
         ) : view === 'pro' ? (
           <ProTab />
+        ) : view === 'ai' ? (
+          <AiTab />
         ) : (
           <Dialpad />
         )}
@@ -87,6 +90,9 @@ function Footer() {
     <nav className="flex border-t border-gray-200 bg-white">
       <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>
         Keypad
+      </TabButton>
+      <TabButton active={view === 'ai'} onClick={() => setView('ai')}>
+        AI
       </TabButton>
       <TabButton active={view === 'sms'} onClick={() => setView('sms')}>
         SMS

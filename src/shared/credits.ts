@@ -74,9 +74,10 @@ export async function* streamChat(
   userId: string,
   opts: {
     model: string;
-    transcript: string;
+    transcript?: string;
     messages: ChatTurn[];
     idempotencyKey?: string;
+    mode?: 'call' | 'general';
   },
 ): AsyncGenerator<ChatEvent> {
   const res = await fetch(`${BASE_URL}/api/ai/chat`, {

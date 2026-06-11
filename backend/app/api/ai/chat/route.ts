@@ -49,6 +49,8 @@ interface ChatBody {
   messages?: { role: 'user' | 'assistant'; content: string }[];
   /** Per-message idempotency key from the client (dedupes reserve on retry). */
   idempotencyKey?: string;
+  /** 'call' = coach over a transcript; 'general' = open dialer assistant. */
+  mode?: 'call' | 'general';
 }
 
 /**
@@ -96,11 +98,16 @@ export async function POST(req: NextRequest) {
     provider === 'openai' ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return j({ error: 'ai_unavailable' }, 503);
 
+  const mode: 'call' | 'general' = body.mode ?? (transcript ? 'call' : 'general');
   const system =
-    'You are a sales-call coach embedded in a dialer. Answer the user’s questions ' +
-    'about THIS call using the transcript below. Be concise, specific, and tactical. ' +
-    'If the transcript does not contain the answer, say so.\n\n' +
-    `--- CALL TRANSCRIPT ---\n${transcript}\n--- END TRANSCRIPT ---`;
+    mode === 'call'
+      ? 'You are a sales-call coach embedded in a dialer. Answer the user’s questions ' +
+        'about THIS call using the transcript below. Be concise, specific, and tactical. ' +
+        'If the transcript does not contain the answer, say so.\n\n' +
+        `--- CALL TRANSCRIPT ---\n${transcript}\n--- END TRANSCRIPT ---`
+      : 'You are a helpful sales assistant embedded in a Twilio dialer Chrome extension. ' +
+        'Help the user with sales calls, scripts, objection handling, follow-ups, and ' +
+        'general questions. Be concise, specific, and practical.';
 
   // Estimate input tokens for the reservation hold (chars/4 heuristic, upper-bounded).
   const promptChars = system.length + turns.reduce((n, m) => n + m.content.length, 0);
