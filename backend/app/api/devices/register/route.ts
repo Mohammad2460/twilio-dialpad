@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { generateSecret, hashSecret, encryptSecret } from '@/lib/crypto';
+import { grant, getActivePricing } from '@/lib/credits';
 
 export const runtime = 'nodejs';
 
@@ -89,6 +90,17 @@ export async function POST(req: NextRequest) {
       return j({ error: 'create_failed' }, 500);
     }
     userId = created.id;
+  }
+
+  // ── Free managed-AI taste grant (v2). Idempotent per user (key freegrant:<id>),
+  // so re-registration and existing v1 users get it exactly once. Non-fatal.
+  try {
+    const pricing = await getActivePricing();
+    if (pricing.free_grant > 0) {
+      await grant(userId, pricing.free_grant, 'grant', null, `freegrant:${userId}`, pricing.version);
+    }
+  } catch (e) {
+    console.error('[devices/register] free grant failed (non-fatal)', e);
   }
 
   // ── Mint a device secret (store only the hash).

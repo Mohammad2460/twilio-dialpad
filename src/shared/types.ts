@@ -99,6 +99,7 @@ export interface Settings {
   // Deepgram transcription (optional). Without key → no transcription.
   deepgramApiKey?: string;
   deepgramModel?: string; // user-selectable Deepgram model id; default 'nova-2'
+  managedTranscription?: boolean; // P8.3: use our Deepgram key (credits) instead of BYO
   transcriptFolderConfigured?: boolean; // true once user picked a folder via showDirectoryPicker
 
   // Incoming call routing (optional, defaults: incoming=true, forward=false)

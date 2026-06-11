@@ -3,6 +3,7 @@ import { sendMsg } from '@shared/messaging';
 import type { Settings, TranscriptSegment } from '@shared/types';
 import { mixToStereo, type MixedStream } from '@shared/audio-mixer';
 import { DeepgramSession } from '@shared/deepgram';
+import { ManagedTranscription } from '@shared/managed-transcription';
 
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
 const REGISTER_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
@@ -102,6 +103,7 @@ function emitCallState(payload: Record<string, unknown>) {
  */
 class TranscriptionController {
   private session: DeepgramSession | null = null;
+  private managed: ManagedTranscription | null = null;
   private mixed: MixedStream | null = null;
   private segments: TranscriptSegment[] = [];
   private startedAt = 0;
@@ -115,6 +117,7 @@ class TranscriptionController {
     remoteNumber: string,
     apiKey: string,
     model?: string,
+    managed?: { userId: string },
   ): Promise<void> {
     // Twilio Voice SDK 2.x attaches the WebRTC audio tracks asynchronously —
     // they are frequently NOT ready in the same tick the 'accept' event fires.
@@ -149,29 +152,54 @@ class TranscriptionController {
     this.startedAt = Date.now();
     this.mixed = mixToStereo(local, remote);
 
-    this.session = new DeepgramSession({
-      apiKey,
-      model,
-      startedAt: this.startedAt,
-      onSegment: (seg) => {
-        if (seg.isFinal) this.segments.push(seg);
-        _transcriptSegmentCb?.(callSid, seg);
-      },
-      onError: (err) => {
-        console.warn('[transcription] DeepgramSession error', err);
-        _transcriptErrorCb?.(err);
-      },
-    });
+    const onSegment = (seg: TranscriptSegment) => {
+      if (seg.isFinal) this.segments.push(seg);
+      _transcriptSegmentCb?.(callSid, seg);
+    };
 
     try {
-      await this.session.start(this.mixed.stream);
-      console.log('[transcription] Deepgram session started');
+      if (managed) {
+        // Managed path (P8.3): our Deepgram key via short-lived JWTs, metered by
+        // credits. Stops gracefully at zero balance; never affects the call.
+        this.managed = new ManagedTranscription({
+          userId: managed.userId,
+          callSid,
+          stream: this.mixed.stream,
+          startedAt: this.startedAt,
+          model: model ?? 'nova-3',
+          onSegment,
+          onStopped: (reason) => {
+            console.log('[transcription] managed stopped:', reason);
+            if (reason === 'insufficient_credits') {
+              _transcriptErrorCb?.(new Error('Transcription paused — out of credits.'));
+            } else if (reason === 'unavailable') {
+              _transcriptErrorCb?.(new Error('Managed transcription unavailable.'));
+            }
+          },
+        });
+        await this.managed.start();
+        console.log('[transcription] managed session started');
+      } else {
+        this.session = new DeepgramSession({
+          apiKey,
+          model,
+          startedAt: this.startedAt,
+          onSegment,
+          onError: (err) => {
+            console.warn('[transcription] DeepgramSession error', err);
+            _transcriptErrorCb?.(err);
+          },
+        });
+        await this.session.start(this.mixed.stream);
+        console.log('[transcription] Deepgram session started');
+      }
     } catch (e) {
       // Hard failure — clean up streams, surface error, but don't break the call.
       console.error('[transcription] start failed', e);
       this.mixed?.dispose();
       this.mixed = null;
       this.session = null;
+      this.managed = null;
       _transcriptErrorCb?.(e instanceof Error ? e : new Error(String(e)));
     }
 
@@ -224,8 +252,12 @@ class TranscriptionController {
     try {
       await this.session?.stop();
     } catch { /* noop */ }
+    try {
+      await this.managed?.stop();
+    } catch { /* noop */ }
     this.mixed?.dispose();
     this.session = null;
+    this.managed = null;
     this.mixed = null;
 
     if (meta && this.segments.length > 0) {
@@ -317,19 +349,41 @@ export class DeviceManager {
       this.startedAt = Date.now();
       emitCallState({ state: 'open', direction, sid: call.parameters.CallSid });
 
-      // Start transcription IFF Deepgram key configured. Failure is non-fatal.
+      // Start transcription: managed (our key, credits) if enabled, else BYO key.
+      // Failure is always non-fatal — the call continues regardless.
       const apiKey = this.settings?.deepgramApiKey;
       const model = this.settings?.deepgramModel;
+      const managedOn = this.settings?.managedTranscription;
       const callSid = call.parameters.CallSid ?? '';
       const remoteNumber = (call.parameters.From ?? call.parameters.To ?? '') as string;
-      if (apiKey && callSid) {
+      if (callSid && (managedOn || apiKey)) {
         this.transcription = new TranscriptionController();
-        this.transcription
-          .start(call, callSid, direction, remoteNumber, apiKey, model)
-          .catch((e) => {
+        void (async () => {
+          let managed: { userId: string } | undefined;
+          if (managedOn) {
+            const { cloudUserId } = await chrome.storage.local.get('cloudUserId');
+            if (typeof cloudUserId === 'string' && cloudUserId) managed = { userId: cloudUserId };
+          }
+          // Managed needs an account; without one, fall back to a BYO key if set.
+          if (!managed && !apiKey) {
+            this.transcription = null;
+            return;
+          }
+          try {
+            await this.transcription!.start(
+              call,
+              callSid,
+              direction,
+              remoteNumber,
+              apiKey ?? '',
+              managed ? (model ?? 'nova-3') : model,
+              managed,
+            );
+          } catch (e) {
             console.warn('[transcription] start failed', e);
             this.transcription = null;
-          });
+          }
+        })();
       }
     });
     call.on('ringing', () => {

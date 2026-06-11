@@ -18,6 +18,9 @@ const SettingsSchema = z.object({
   hubspotPortalId: z.string().min(1).optional(),
   deepgramApiKey: z.string().min(1).optional(),
   deepgramModel: z.string().min(1).optional(),
+  /** Managed transcription (P8.3): use our Deepgram key, metered by credits,
+   * instead of BYO. Opt-in; default off (BYO stays the default). */
+  managedTranscription: z.boolean().optional(),
   transcriptFolderConfigured: z.boolean().optional(),
   incomingEnabled: z.boolean().optional(),
   forwardEnabled: z.boolean().optional(),
