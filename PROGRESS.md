@@ -1,71 +1,54 @@
 # PROGRESS — Twilio Dialpad
 
-> Canonical handoff. Source of truth = git history + the plan.
-> Plan: `~/.claude/plans/generic-sauteeing-willow.md`
+> Canonical handoff. Source of truth = git history + `CLAUDE.md`.
+> To resume in a new session: read this file + `CLAUDE.md` + `git log origin/main..HEAD`.
+
+_Last updated: 2026-06-11._
+
+## Status: v2 (managed AI + credits) SHIPPED — merged to `main` via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+
+### v2 — Phase 8: managed AI + credits (DONE)
+- Credit ledger (append-only `credit_ledger` + spendable `credit_buckets` + versioned `pricing_config`); atomic oversell-safe plpgsql; reserve→settle→refund w/ idempotency. Applied to prod Supabase `xyhkklqnbxoucnjlckaz`.
+- Managed AI chatbox, **multi-provider**: `gpt-*` → OpenAI, else Anthropic. **Free tier = `gpt-5-mini` only**; all Claude models Pro-gated (Claude vendor cost only fires for paying users).
+- Managed Deepgram transcription via temp-token JWTs (BYO free OR managed credits).
+- Dodo: Pro $9/mo monthly grant + PWYW one-time top-ups; webhook grants gated on `payment.succeeded`, idempotent.
+- Pricing: `1 cr = $0.01`, `credits = max(min_charge, ceil(vendor_usd × 3 × 100))`. Conservative defaults (markup 3, min_charge 1, monthly_grant 1000, free_grant 50) — tune from real burn data in `pricing_config`.
+- Vercel keys set: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`. **Anthropic account not yet funded** → Claude fails gracefully (refund + "AI request failed"); GPT-5 mini works.
+- Reviews closed: superpowers (C1 OpenAI no-usage settle) + Codex (P1 seed gpt-5-mini, P1 gate top-up on payment success). Backend + extension tsc 0 errors.
+
+### Build fix (2026-06-11)
+- `@crxjs/vite-plugin` `2.0.0-beta.28` hung `vite build` indefinitely → upgraded to **2.5.0**; deduped rollup inputs (sidepanel/options come from the manifest); disabled sourcemaps. Build now completes (~75s). Note: `transforming (1) @crx/manifest` line is static in crx mode — not a hang.
+
+### Outstanding (user actions, not code)
+- Fund Anthropic account → Claude models go live for Pro users.
+- One live test-mode Dodo top-up before promoting.
 
 ---
 
-## UX Overhaul + Monetization (Batch 1) — branch `claude/pensive-bardeen-363b43`
+## UX Overhaul + Monetization (Batch 1) — [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6)
 
-_Spec: `docs/superpowers/specs/2026-06-11-ux-overhaul-monetization-design.md` · Plan: `docs/superpowers/plans/2026-06-11-ux-overhaul-monetization.md`. PR held for batch 2 (user has more to add)._
+_Spec: `docs/superpowers/specs/2026-06-11-ux-overhaul-monetization-design.md` · Plan: `docs/superpowers/plans/2026-06-11-ux-overhaul-monetization.md`. Batch 2 to follow in a new session._
 
-Shipped (both typechecks 0 errors, `pnpm build` ✓):
+Shipped (both typechecks 0 errors, `pnpm build` ✓; full-branch code review passed, one Important finding fixed):
 - **Standalone AI tab** — new bottom-nav "AI" tab. `AiChatbox` made context-optional (general chat OR pick a recent transcribed call). Backend `/api/ai/chat` gained additive `mode: 'call' | 'general'` (general system prompt when no transcript). `streamChat` transcript now optional + `mode`.
 - **PRO-locked models** — model picker shows a PRO badge; tapping a Claude model as a free user opens `UpgradeModal` (benefits + checkout) instead of failing. Backend 402 stays the source of truth.
 - **AI promo** — "✨ Ask AI about your calls" button below the dialpad → AI tab.
 - **Pro tab = sales surface** — Free vs Pro tier comparison + credit-system explainer + top-up packs (1000/2500/5000) in upsell + trialing states.
 - **Credits** — header credits chip in `StatusBar` (cached→live, taps → Pro).
 - **Dialpad caret** — number display is now a focusable `<input>` with a visible caret (click-to-position, type, paste); global keydown guarded so the field owns typing.
-- **Options tab → setup-only** — stripped to the Twilio provisioning wizard + mic-permission card; all duplicated controls removed (they live in the side-panel `SettingsTab`). `options_page` kept (mic grant needs a full tab). Options bundle 11.4kB.
+- **Options tab → setup-only** — stripped to the Twilio provisioning wizard + mic-permission card; all duplicated controls removed (they live in the side-panel `SettingsTab`). `options_page` kept (mic grant needs a full tab).
 - **Dup settings removed** — killed the `StatusBar` gear ⚙ and the `Dialpad` "Settings" pill; footer Settings tab is the sole entry.
 - **Bug: recurring mic banner** — new `useMicPermission()` (Permissions API); banner gated on REAL mic state (`prompt`/`denied`), decoupled from device registration. Once granted it never recurs.
-- **Bug: transcript sometimes doesn't start** — `twilio-device.ts` retries `TranscriptionController.start` once on transient failure, then surfaces a non-fatal "transcription unavailable" signal (call audio untouched).
+- **Bug: transcript sometimes doesn't start** — the managed path (`managed-transcription.ts`) now retries the INITIAL window once on a transient (network/503/socket-open) failure; terminal 402 never retries. BYO path already self-retries internally. `AiChatbox` aborts the AI stream on unmount. Call audio never affected.
+
+### Batch 2 (next session) — deferred minors from review
+- ProTab "expired" view shows the credit explainer + CreditsSection (cosmetic dedupe).
+- Locked-model upgrade popup can trigger via two paths (harmless, modal idempotent).
+- Chat input Enter has no shift-guard (single-line — only matters if it becomes multi-line).
 
 ---
 
-## v2 — Managed AI + credits (Phase 8) — IN PROGRESS
-
-_Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/specs/2026-06-10-v2-managed-ai-credits-design.md`._
-
-**Locked:** managed AI = Claude family (Haiku default free; Sonnet/Opus Pro); OpenRouter deferred; **managed transcription (P8.3) BUILT** via Deepgram `/auth/grant` temp-token JWTs (Vercel-native, no WS relay) — BOTH modes now per plan: BYO Deepgram (free) OR managed (our key, ~2.5 cr/min mono). Safe conservative pricing defaults (N=1000, mono, free-grant 50) pending real burn data.
-**Invariants held:** calls always BYO-Twilio (credits meter AI only) · Auth Token never persisted · backend = source of truth (row-locked ledger) · marketing consent separate/default-OFF · zero balance never drops a call. **Additive only — existing v1 users: no re-login, no breakage, managed mode opt-in.**
-
-| Phase | State |
-|---|---|
-| Spec | ✅ `3e64e68` |
-| **P8.1** ledger schema + atomic plpgsql (reserve/settle/refund/grant/expire, oversell-safe) | ✅ code `d615ba8` — **NOT yet applied to prod** (awaiting explicit approval) |
-| **P8.2** typed billing engine + cost adapters + caps | ✅ `a786998` |
-| **P8.4** `/api/ai/chat` managed Claude chatbox (reserve→settle, Haiku free/Sonnet+Opus Pro) | ✅ code, backend typecheck pending |
-| **P8.5** Dodo webhook grants (monthly+topup, idempotent) + `/api/credits/expire` cron | ✅ code |
-| **P8.6** credit UI: chatbox balance + `CreditsSection` (mounted in all ProTab states, top-up packs) + `/api/credits/[userId]` | ✅ |
-| **P8.3** managed Deepgram transcription (temp-token JWTs, reconnect-per-window, zero-balance stop never drops call) | ✅ built — typecheck 0 errors, credit math verified (~2.5 cr/min mono). Needs `DEEPGRAM_API_KEY` in Vercel for live use |
-| **P8.7** billing math: **13/13 assertions executed + pass**; ledger logic **smoke-tested green in prod** (grant/reserve/settle/refund/expire/reap, idempotency, insufficient) | ✅ |
-| **P8.8** verification: backend + extension typecheck 0 errors; DB smoke green; full extension build | ⏳ (build below; live run blocked on ANTHROPIC_API_KEY) |
-
-**Done since:**
-- [x] Prod migration applied to Supabase `xyhkklqnbxoucnjlckaz` (3 tables, 6 functions, pricing v1). **Smoke test caught + fixed a real bug** (`grant_credits` wrote `expires_at` to the ledger — column lives on buckets). Full reserve/settle/refund/expire/idempotency/insufficient cycle verified green on a throwaway user.
-- [x] Dodo top-up: `ensureTopUpProduct` (self-provisioning 1¢/unit one-time product) + `/api/checkout/topup/[userId]` (pack allowlist 1000/2500/5000) + client `startTopUp` + chatbox upsell.
-- [x] Backend + extension typecheck both 0 errors.
-
-**Code review fixes (all applied + verified):**
-- [x] #1 free-tier grant on device registration (idempotent).
-- [x] #2 `reap_stale_reservations` cron — refunds orphaned holds (prod + smoke-tested).
-- [x] #3 Dodo top-up rewritten to **Pay-What-You-Want + exact `amount`** (cents=credits) per Dodo's dynamic-pricing API — removes the fragile quantity×unit-price assumption. Confirmed against Dodo docs (`pay_what_you_want`, `price` floor, `suggested_price`; checkout `product_cart[].amount`).
-
-**Outstanding v2 (Vercel env + final):**
-- [ ] **`ANTHROPIC_API_KEY`** in Vercel prod — managed chat 503 without it.
-- [ ] **`DEEPGRAM_API_KEY`** (Member+) in Vercel prod — managed transcription 503 without it.
-- [ ] First real top-up self-provisions the PWYW product; confirm one live $10 charge before promoting.
-- [ ] Open PR for `claude/v2-managed-ai` (user: open last).
-- [ ] Mount `CreditBalance` in ProTab/StatusBar (component ready; not yet placed).
-- [ ] Backend unit tests (`credits-math.test.ts`) hang in THIS sandbox (vitest/esbuild stall) — run in CI; math hand-verified + DB smoke green.
-- [ ] Open PR for `claude/v2-managed-ai`.
-
----
-
-## v1 (shipped — `1ab3d24` on main)
-
-_Last updated: 2026-06-10 · branch `claude/musing-meninsky-d95614` · latest commit `503c5de`_
+## v1 (shipped earlier — [PR #3](https://github.com/Mohammad2460/twilio-dialpad/pull/3))
 
 ## Status: v1 COMPLETE — session closed. Working tree clean, branch in sync, CI green.
 

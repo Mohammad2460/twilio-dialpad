@@ -14,11 +14,12 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    sourcemap: true,
+    sourcemap: false,
     rollupOptions: {
+      // sidepanel + options come from the manifest (side_panel / options_page) —
+      // @crxjs derives them. Declaring them here too collides and hangs the build.
+      // offscreen.html is NOT a manifest field (created at runtime), so it stays.
       input: {
-        sidepanel: 'src/sidepanel/index.html',
-        options: 'src/options/index.html',
         offscreen: 'src/offscreen/offscreen.html',
       },
     },
