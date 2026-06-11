@@ -9,10 +9,11 @@ import {
   type ChatTurn,
 } from '@shared/credits';
 
-/** Models offered in the picker. Free-tier defaults first; the rest are Pro. */
+/** Models offered in the picker. GPT-5 mini is the only free model (default);
+ *  all Claude models require Pro. */
 const MODELS: { id: string; label: string; pro: boolean }[] = [
-  { id: 'claude-haiku-4-5', label: 'Haiku · fastest', pro: false },
-  { id: 'gpt-5-mini', label: 'GPT-5 mini · fast', pro: false },
+  { id: 'gpt-5-mini', label: 'GPT-5 mini · free', pro: false },
+  { id: 'claude-haiku-4-5', label: 'Haiku · fastest', pro: true },
   { id: 'claude-sonnet-4-6', label: 'Sonnet · sharper', pro: true },
   { id: 'claude-opus-4-8', label: 'Opus · deepest', pro: true },
 ];
@@ -86,7 +87,7 @@ export function AiChatbox({ transcript }: { transcript: string }) {
           setBalance(ev.balance);
         } else if (ev.type === 'error') {
           if (ev.status === 402 && ev.error === 'pro_required') {
-            setNotice({ kind: 'pro', msg: 'Sonnet & Opus need Pro. Haiku is free.' });
+            setNotice({ kind: 'pro', msg: 'Claude models need Pro. GPT-5 mini is free.' });
           } else if (ev.status === 402 || ev.error === 'insufficient_credits') {
             setNotice({ kind: 'credits', msg: 'Out of credits — upgrade or top up to keep using AI.' });
           } else {

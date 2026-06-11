@@ -31,8 +31,10 @@ function j(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: corsHeaders });
 }
 
-/** Models a free user may call. Premium models require Pro (or top-up credits). */
-const FREE_MODELS = new Set(['claude-haiku-4-5', 'gpt-5-mini']);
+/** Models a free user may call. Everything else (all Claude) requires Pro.
+ *  gpt-5-mini is the only free model so Claude vendor cost only fires for paying
+ *  users — lets us fund the Anthropic account from Pro revenue before exposing it. */
+const FREE_MODELS = new Set(['gpt-5-mini']);
 
 async function hasPro(userId: string): Promise<boolean> {
   const { data } = await supabase.rpc('user_has_access', { uid: userId });
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
   }
 
   const pricing = await getActivePricing();
-  const model = body.model ?? 'claude-haiku-4-5';
+  const model = body.model ?? 'gpt-5-mini';
   if (!pricing.llm[model]) return j({ error: 'unknown_model' }, 400);
 
   // Premium models are Pro-only; Haiku is open to all (credit-gated).

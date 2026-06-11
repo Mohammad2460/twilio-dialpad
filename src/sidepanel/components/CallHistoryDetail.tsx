@@ -166,9 +166,9 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
                   onClick={() => setShowChat(true)}
                   className="w-full rounded-lg border border-blue-200 bg-blue-50 p-3 text-left"
                 >
-                  <p className="text-xs font-semibold text-blue-800">Ask Claude about this call</p>
+                  <p className="text-xs font-semibold text-blue-800">Ask AI about this call</p>
                   <p className="mt-0.5 text-[11px] text-gray-600">
-                    Managed AI — no setup. Haiku is free; Sonnet &amp; Opus are Pro.
+                    Managed AI — no setup. GPT-5 mini is free; Claude models are Pro.
                   </p>
                 </button>
               ) : (
