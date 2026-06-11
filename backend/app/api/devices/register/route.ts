@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { randomBytes } from 'node:crypto';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { generateSecret, hashSecret, encryptSecret } from '@/lib/crypto';
 import { grant, getActivePricing } from '@/lib/credits';
+import { createApiKey, createTwimlApp, wireNumber } from '@/lib/twilio-server';
 
 export const runtime = 'nodejs';
 
@@ -34,6 +36,12 @@ export async function POST(req: NextRequest) {
     functionUrl?: unknown;
     configSecret?: unknown;
     label?: unknown;
+    numberSid?: unknown;
+    callerId?: unknown;
+    clientIdentity?: unknown;
+    email?: unknown;
+    marketingConsent?: unknown;
+    provision?: unknown;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -46,6 +54,13 @@ export async function POST(req: NextRequest) {
   if (!SID_RE.test(accountSid) || authToken.length < 10) {
     return j({ error: 'invalid_credentials' }, 400);
   }
+
+  const provision = body.provision === true;
+  const numberSid = typeof body.numberSid === 'string' ? body.numberSid : '';
+  const callerId = typeof body.callerId === 'string' ? body.callerId : '';
+  const clientIdentity = typeof body.clientIdentity === 'string' ? body.clientIdentity : 'dialpad';
+  const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const marketingConsent = body.marketingConsent === true;
 
   // ── Ownership proof: token must authenticate against this SID at Twilio.
   // Token is used here only, in memory, then dropped. Never persisted.
@@ -132,6 +147,68 @@ export async function POST(req: NextRequest) {
       if (fnErr) console.error('[devices/register] function registry upsert failed', fnErr);
     } catch (e) {
       console.error('[devices/register] configSecret encrypt failed', e);
+    }
+  }
+
+  // ── Backend-voice provisioning (new installs). Auth Token still in-memory here.
+  if (provision) {
+    if (!numberSid || !callerId) return j({ error: 'missing_provision_fields' }, 400);
+    try {
+      // Reuse existing resources on re-run (idempotent — avoid orphaning Twilio resources).
+      const { data: cur } = await supabase
+        .from('users')
+        .select('api_key_sid, api_key_secret_enc, twiml_app_sid, voice_capability_secret')
+        .eq('id', userId)
+        .single();
+
+      const capSecret = cur?.voice_capability_secret ?? randomBytes(32).toString('hex');
+      const voiceUrl = `${baseUrl}/api/voice/twiml/${userId}?k=${capSecret}`;
+      const smsUrl = `${baseUrl}/api/sms/inbound?u=${userId}&k=${capSecret}`;
+
+      let apiKeySid = cur?.api_key_sid ?? '';
+      let apiKeySecretEnc = cur?.api_key_secret_enc ?? '';
+      if (!apiKeySid || !apiKeySecretEnc) {
+        const key = await createApiKey(accountSid, authToken);
+        apiKeySid = key.sid;
+        apiKeySecretEnc = encryptSecret(key.secret);
+      }
+      let twimlAppSid = cur?.twiml_app_sid ?? '';
+      if (!twimlAppSid) {
+        const app = await createTwimlApp(accountSid, authToken, voiceUrl);
+        twimlAppSid = app.sid;
+      }
+      await wireNumber(accountSid, authToken, numberSid, twimlAppSid, smsUrl);
+
+      const emailCols = email
+        ? {
+            email,
+            product_email_consent_at: new Date().toISOString(),
+            ...(marketingConsent ? { marketing_consent_at: new Date().toISOString() } : {}),
+          }
+        : {};
+      const { error: upErr } = await supabase
+        .from('users')
+        .update({
+          api_key_sid: apiKeySid,
+          api_key_secret_enc: apiKeySecretEnc,
+          twiml_app_sid: twimlAppSid,
+          voice_capability_secret: capSecret,
+          caller_id: callerId,
+          client_identity: clientIdentity,
+          backend_voice: true,
+          ...emailCols,
+        })
+        .eq('id', userId);
+      if (upErr) {
+        console.error('[register] voice config save failed', upErr);
+        return j({ error: 'provision_failed', step: 'persist' }, 500);
+      }
+    } catch (e) {
+      console.error('[register] provisioning failed', e);
+      return j(
+        { error: 'provision_failed', detail: e instanceof Error ? e.message.slice(0, 120) : 'error' },
+        502,
+      );
     }
   }
 
