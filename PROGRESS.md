@@ -5,7 +5,27 @@
 
 _Last updated: 2026-06-11._
 
-## Status: Batch 1 UX overhaul + monetization SHIPPED — merged to `main` via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6). v2 (managed AI + credits) shipped earlier via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4). Next: batch 2 (new session).
+## Status: Batch 2 onboarding overhaul CODE-COMPLETE on `claude/romantic-feistel-5fb77a` (PR pending). Batch 1 shipped via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6); v2 via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+
+### Batch 2 — onboarding overhaul (CODE-COMPLETE, needs prod migration + deploy + manual e2e)
+_Spec: `docs/superpowers/specs/2026-06-11-onboarding-overhaul-design.md` · Plan: `docs/superpowers/plans/2026-06-11-onboarding-overhaul.md`._
+
+What changed (all typechecks 0 errors; 34 ext + 11 backend tests pass; `npx vite build` ✓):
+- **Instant setup (wizard killed).** Per-user Twilio Serverless build/deploy (~60-90s) removed for NEW installs. Voice now backend-hosted: `/api/voice/token/[userId]` (mints AccessToken from stored API key secret, device-auth) + `/api/voice/twiml/[userId]` (TwiML webhook, capability-secret in URL). Provisioning folds into `/api/devices/register` (`provision:true`): create API key → store secret **encrypted** (AES-256-GCM) → create TwiML app (VoiceUrl→backend) → wire number Voice+SMS. Setup is now ~3-5s, single call. **Auth Token still never persisted.**
+- **Existing users unaffected** — they keep their deployed Functions (`backend_voice=false`); every modified route branches on `backend_voice` and preserves the legacy Function path. No forced migration.
+- **Mandatory email at setup** (no Skip, no 6-digit verify). Captured in the register call → `email` + `product_email_consent_at`. `EmailCaptureSheet` + soft-prompt removed. Marketing checkbox stays optional/default-OFF.
+- **Light trial.** Trial no longer unlocks all Pro. New `user_is_paid` SQL gates SMS/recording/Claude (paid only); `user_is_trialing` makes managed transcription FREE during trial (no credit debit in `/api/transcribe/token`+`settle`). gpt-5-mini stays free. Client `entitlements.ts` split into `paid` vs `trialing` + new `managed_transcription` feature.
+- **Trial-start popup** (one-time, `trialPopupSeen`) + **expiry banner** (last 3 days, `daysLeft<=3`) with Upgrade → Dodo checkout.
+- **SMS send / recording media+delete / inbound SMS** moved to backend for backend-voice users (use stored API key; inbound SMS accepts `?u`/`?k` capability auth alongside legacy body `secret`).
+- **Fixed `npm test`** (broken by the crx 2.5.0 upgrade): dedicated `vitest.config.ts` (no crx plugin, `node` env — happy-dom hung vitest 2.x).
+
+**OUTSTANDING (user actions — code is done):**
+- [ ] **Apply `scripts/migration-backend-voice.sql` to prod Supabase `xyhkklqnbxoucnjlckaz`** (denied to the agent as a prod-DB change — apply via dashboard or authorize). Adds voice-config columns + `user_is_paid`/`user_is_trialing`. Backend voice routes 409/500 until applied.
+- [ ] Deploy backend to Vercel (new routes).
+- [ ] Manual e2e: fresh install → setup in seconds → first call connects → trial popup → (simulate `trial_ends_at` ~2d) banner → checkout. Verify TwiML App VoiceUrl = `…/api/voice/twiml/<uid>?k=…`.
+- [ ] `pnpm build` uses bare `tsc` — fails in this worktree (PATH); `npx tsc --noEmit && npx vite build` works. Non-blocking.
+
+### Batch 1 status (shipped)
 
 ### v2 — Phase 8: managed AI + credits (DONE)
 - Credit ledger (append-only `credit_ledger` + spendable `credit_buckets` + versioned `pricing_config`); atomic oversell-safe plpgsql; reserve→settle→refund w/ idempotency. Applied to prod Supabase `xyhkklqnbxoucnjlckaz`.
