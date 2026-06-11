@@ -166,13 +166,17 @@ export async function POST(req: NextRequest) {
     }
 
     // Top-up: a one-time purchase carrying `topup_credits` in metadata. Flat
-    // $0.01/credit; longer expiry from config.
-    const topupRaw = (data.metadata as Record<string, string> | undefined)?.topup_credits;
-    const topupCredits = topupRaw ? parseInt(topupRaw, 10) : 0;
-    if (Number.isFinite(topupCredits) && topupCredits > 0) {
-      const exp = new Date();
-      exp.setMonth(exp.getMonth() + pricing.topup_expiry_months);
-      await grant(userId, topupCredits, 'topup', exp.toISOString(), `topup:${webhookId}`, pricing.version);
+    // $0.01/credit; longer expiry from config. MUST gate on the payment-success
+    // event — metadata can ride on payment.failed / other lifecycle events, and
+    // granting on mere metadata presence would hand out credits without payment.
+    if (eventType === 'payment.succeeded') {
+      const topupRaw = (data.metadata as Record<string, string> | undefined)?.topup_credits;
+      const topupCredits = topupRaw ? parseInt(topupRaw, 10) : 0;
+      if (Number.isFinite(topupCredits) && topupCredits > 0) {
+        const exp = new Date();
+        exp.setMonth(exp.getMonth() + pricing.topup_expiry_months);
+        await grant(userId, topupCredits, 'topup', exp.toISOString(), `topup:${webhookId}`, pricing.version);
+      }
     }
   } catch (e) {
     console.error('[webhook/dodo] credit grant failed (non-fatal)', e, 'event', eventType, 'user', userId);

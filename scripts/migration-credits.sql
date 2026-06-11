@@ -427,6 +427,8 @@ VALUES (1, jsonb_build_object(
   'transcription_channels', 1,      -- mono default (½ COGS); flip to 2 for stereo
   'caps', jsonb_build_object('max_input_tokens', 60000, 'max_output_tokens', 4000),
   'llm', jsonb_build_object(
+    -- gpt-5-mini is the only free-tier model; cache_write unused for OpenAI (set = in).
+    'gpt-5-mini',        jsonb_build_object('in', 0.25, 'out', 2.0,  'cache_write', 0.25, 'cache_read', 0.025),
     'claude-haiku-4-5',  jsonb_build_object('in', 1.0,  'out', 5.0,  'cache_write', 1.25, 'cache_read', 0.10),
     'claude-sonnet-4-6', jsonb_build_object('in', 3.0,  'out', 15.0, 'cache_write', 3.75, 'cache_read', 0.30),
     'claude-opus-4-8',   jsonb_build_object('in', 5.0,  'out', 25.0, 'cache_write', 6.25, 'cache_read', 0.50)
