@@ -5,7 +5,7 @@
 
 _Last updated: 2026-06-11._
 
-## Status: v2 (managed AI + credits) SHIPPED — merged to `main` via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+## Status: Batch 1 UX overhaul + monetization SHIPPED — merged to `main` via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6). v2 (managed AI + credits) shipped earlier via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4). Next: batch 2 (new session).
 
 ### v2 — Phase 8: managed AI + credits (DONE)
 - Credit ledger (append-only `credit_ledger` + spendable `credit_buckets` + versioned `pricing_config`); atomic oversell-safe plpgsql; reserve→settle→refund w/ idempotency. Applied to prod Supabase `xyhkklqnbxoucnjlckaz`.
