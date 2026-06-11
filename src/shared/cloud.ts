@@ -60,6 +60,14 @@ export async function registerDevice(opts: {
   functionUrl?: string;
   configSecret?: string;
   label?: string;
+  // Backend-voice provisioning (new installs): create API key + TwiML app + wire
+  // number + store email — all server-side in the same ownership-verified call.
+  numberSid?: string;
+  callerId?: string;
+  clientIdentity?: string;
+  email?: string;
+  marketingConsent?: boolean;
+  provision?: boolean;
 }): Promise<CloudAccount> {
   const res = await fetch(`${BASE_URL}/api/devices/register`, {
     method: 'POST',

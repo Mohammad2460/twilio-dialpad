@@ -13,6 +13,8 @@ export function SetupForm({ initial, onSubmit }: Props) {
   const [accountSid, setAccountSid] = useState(initial?.accountSid ?? '');
   const [authToken, setAuthToken] = useState('');
   const [clientIdentity, setClientIdentity] = useState(initial?.clientIdentity ?? 'dialpad');
+  const [email, setEmail] = useState('');
+  const [marketing, setMarketing] = useState(false);
   const [numbers, setNumbers] = useState<IncomingPhoneNumber[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<IncomingPhoneNumber | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,6 +23,7 @@ export function SetupForm({ initial, onSubmit }: Props) {
   const sidOk = /^AC[a-zA-Z0-9]{32}$/.test(accountSid);
   const tokenOk = authToken.length >= 30;
   const identityOk = /^[a-zA-Z][a-zA-Z0-9_-]{0,120}$/.test(clientIdentity);
+  const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
 
   async function loadNumbers() {
     if (!sidOk || !tokenOk) return;
@@ -49,11 +52,13 @@ export function SetupForm({ initial, onSubmit }: Props) {
       clientIdentity,
       callerId: selectedNumber.phone_number,
       numberSid: selectedNumber.sid,
+      email: email.trim(),
+      marketing,
     });
   }
 
   const canLoadNumbers = sidOk && tokenOk && !loading;
-  const canSubmit = !!selectedNumber && identityOk && !loading;
+  const canSubmit = !!selectedNumber && identityOk && emailOk && !loading;
 
   return (
     <div className="mx-auto max-w-xl p-8">
@@ -84,6 +89,27 @@ export function SetupForm({ initial, onSubmit }: Props) {
             autoComplete="off"
           />
         </Field>
+
+        <Field label="Email (for trial reminders + account recovery)">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value.trim())}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+          {email && !emailOk && <Hint error>Enter a valid email.</Hint>}
+        </Field>
+
+        <label className="flex cursor-pointer items-start gap-2">
+          <input
+            type="checkbox"
+            checked={marketing}
+            onChange={(e) => setMarketing(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-gray-300"
+          />
+          <span className="text-xs text-gray-600">Also send me product tips &amp; offers (optional)</span>
+        </label>
 
         <Field label="Your name for this device (Twilio Client identity)">
           <input

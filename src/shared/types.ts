@@ -87,6 +87,9 @@ export interface Settings {
   defaultCallerId: string;
   configuredAt: number;
 
+  /** True for installs provisioned on the backend (no per-user Twilio Function). */
+  backendVoice?: boolean;
+
   // V1.1 — optional, all backward compatible with V0 installs.
   serviceSid?: string;
   environmentSid?: string;

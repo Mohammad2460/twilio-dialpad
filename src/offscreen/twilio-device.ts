@@ -4,6 +4,9 @@ import type { Settings, TranscriptSegment } from '@shared/types';
 import { mixToStereo, type MixedStream } from '@shared/audio-mixer';
 import { DeepgramSession } from '@shared/deepgram';
 import { ManagedTranscription } from '@shared/managed-transcription';
+import { authHeader } from '@shared/cloud';
+
+const BACKEND_BASE_URL = 'https://dialler-mcp.vercel.app';
 
 const TOKEN_REFRESH_MS = 50 * 60 * 1000;
 const REGISTER_BACKOFF_MS = [1000, 2000, 4000, 8000, 16000, 30000];
@@ -15,9 +18,24 @@ function sleep(ms: number): Promise<void> {
 
 interface FetchTokenResult { token: string; identity: string; }
 
-async function fetchToken(functionUrl: string, identity: string): Promise<string> {
-  const url = new URL('/token', functionUrl);
-  url.searchParams.set('identity', identity);
+async function fetchToken(settings: Settings): Promise<string> {
+  // Backend-voice installs mint the AccessToken on our backend (device-auth);
+  // legacy installs hit their deployed Twilio Function /token (unauthenticated GET).
+  if (settings.backendVoice) {
+    const { cloudUserId } = await chrome.storage.local.get('cloudUserId');
+    if (typeof cloudUserId !== 'string') throw new Error('Device not registered');
+    const res = await fetch(`${BACKEND_BASE_URL}/api/voice/token/${cloudUserId}`, {
+      method: 'POST',
+      headers: { Authorization: await authHeader(cloudUserId), 'Content-Type': 'application/json' },
+      body: '{}',
+    });
+    if (!res.ok) throw new Error(`Token mint failed: ${res.status} ${res.statusText}`);
+    const json = (await res.json()) as FetchTokenResult;
+    if (!json.token) throw new Error('Token response missing token field');
+    return json.token;
+  }
+  const url = new URL('/token', settings.functionUrl);
+  url.searchParams.set('identity', settings.clientIdentity);
   const res = await fetch(url.toString(), { method: 'GET' });
   if (!res.ok) throw new Error(`Token mint failed: ${res.status} ${res.statusText}`);
   const json = (await res.json()) as FetchTokenResult;
@@ -303,7 +321,7 @@ export class DeviceManager {
     emitDeviceState('initializing');
 
     try {
-      const token = await fetchToken(settings.functionUrl, settings.clientIdentity);
+      const token = await fetchToken(settings);
       this.device = new Device(token, {
         codecPreferences: ['opus' as never, 'pcmu' as never],
         logLevel: 'warn',
@@ -432,7 +450,7 @@ export class DeviceManager {
   private async refreshToken(): Promise<void> {
     if (!this.settings || !this.device) return;
     try {
-      const token = await fetchToken(this.settings.functionUrl, this.settings.clientIdentity);
+      const token = await fetchToken(this.settings);
       this.device.updateToken(token);
       this.scheduleRefresh();
     } catch (e) {
