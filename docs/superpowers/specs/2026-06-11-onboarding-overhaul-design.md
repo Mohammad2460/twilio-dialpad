@@ -31,30 +31,36 @@ New users churn at setup. Four issues:
 
 ## #1 — Instant setup (backend-hosted voice)
 
-### New setup flow
+### New setup flow — provisioning folds into `/api/devices/register`
 
-1. Setup screen collects: Account SID, Auth Token (in-memory only), email (required), client identity, selected phone number.
-2. `POST /api/provision/{userId}` (device-auth'd) with `{ accountSid, authToken, callerId, numberSid, clientIdentity }`. Backend, using the Auth Token in-memory for this request only:
-   - `createApiKey` → returns `{ sid, secret }`. Encrypt `secret` → store `api_key_secret_enc` + `api_key_sid`.
-   - Generate a random `voice_capability_secret` (32 bytes hex).
+There is NO separate `/api/provision` endpoint and NO device-auth chicken-and-egg. `/api/devices/register` already accepts `{ accountSid, authToken }`, verifies Twilio ownership with the Auth Token in-memory (then discards it), dedups the user on the verified SID, and mints the device secret. Backend provisioning piggybacks on that same request — the Auth Token is already in scope there.
+
+1. Setup screen collects: Account SID, Auth Token (in-memory only), email (required), client identity, selected phone number (`numberSid` + `callerId`), optional marketing opt-in.
+2. Extension → `POST /api/devices/register` with `{ accountSid, authToken, numberSid, callerId, clientIdentity, email, marketingConsent?, provision: true }`. (No `functionUrl`/`configSecret` — that signals the backend-voice path.) Backend, after the existing ownership-verify + user/device creation:
+   - `createApiKey` (Twilio REST, Basic auth = SID:authToken) → `{ sid, secret }`. Encrypt `secret` → store `api_key_secret_enc` + `api_key_sid`.
+   - Generate `voice_capability_secret` (32 bytes hex).
    - `createTwimlApp` with `VoiceUrl = {BASE_URL}/api/voice/twiml/{userId}?k={voice_capability_secret}`, `VoiceMethod=POST`. Store `twiml_app_sid`.
-   - Wire the number: set `VoiceApplicationSid = twiml_app_sid`, `SmsUrl = {BASE_URL}/api/sms/inbound?u={userId}&k={voice_capability_secret}`.
-   - Store `caller_id`, `client_identity`, `account_sid`.
-   - Discard the Auth Token.
-   - Return `{ ok: true }`.
-3. Extension writes `Settings` with a new marker `backendVoice: true` and `functionUrl` pointing at the backend token endpoint base. Calls work immediately.
+   - Wire the number (`POST /Accounts/{sid}/IncomingPhoneNumbers/{numberSid}.json`): `VoiceApplicationSid = twiml_app_sid`, `SmsUrl = {BASE_URL}/api/sms/inbound?u={userId}&k={voice_capability_secret}`, `SmsMethod=POST`.
+   - Store `caller_id`, `client_identity`, `account_sid`, and the email (see #2, no-verify).
+   - Free-grant (existing logic). Discard the Auth Token.
+   - Return `{ userId, deviceId, deviceSecret, mcpUrl }` (unchanged shape).
+3. Extension writes `Settings { accountSid, clientIdentity, callerId, backendVoice: true }` + caches `cloudUserId`/`cloudDeviceId`/device secret (as `registerDevice` already does). No `functionUrl` for new installs — the token URL is derived as `{BASE_URL}/api/voice/token/{userId}`. Calls work immediately.
+
+**Idempotency / partial-failure:** before creating, check whether the user row already has `api_key_sid`/`twiml_app_sid` (re-run setup) and reuse them rather than orphaning Twilio resources. On any provisioning step failure, return a clear error code (`provision_failed`, with the failing step) and HTTP 502; the extension shows "Setup failed — try again". A re-run reuses stored SIDs. (Acceptable orphan risk at current scale; a stray API key is revocable in the Twilio console.)
+
+**Runtime config (forward / incoming / record):** today these live as Function env vars (`INCOMING_ENABLED`/`FORWARD_ENABLED`/`FORWARD_NUMBER`/`RECORD_OUTGOING`) updated via the `/config` Function (`CONFIG_JS`). In the backend model they become columns on the voice-config row, read at TwiML-render time. The settings-update path writes the DB directly — NO Twilio call, NO redeploy. The `/voice/twiml` handler reads these columns to build the inbound cascade + recording flag.
 
 ### New backend routes
 
 - `POST /api/voice/token/{userId}` — device-auth'd. Decrypts `api_key_secret_enc`, mints a Twilio `AccessToken` with a `VoiceGrant({ outgoingApplicationSid: twiml_app_sid, incomingAllow: true })`, identity = `client_identity`. Returns `{ token, identity }`. Mirrors the current `/token` Function (`function-code.ts` lines 4-26).
 - `POST /api/voice/twiml/{userId}` — public, gated on `?k=` capability secret (constant-time compare). Reads `caller_id` + forward settings from the user row. Returns the same Dial TwiML the Function produces (`function-code.ts` lines 30-120): outbound `Dial` with `callerId`, inbound routing / forward, self-dial guard, recording flag when entitled. Port the logic verbatim.
-- SMS send: extend existing `/api/sms/{userId}` send path to send via the Twilio Messages API using the decrypted API key secret (today the Function does this). Gate on Pro.
-- Recording callback: `recordingStatusCallback` points at existing `/api/recordings/ingest`; backend downloads media using the decrypted API key secret (today the Function downloads then PUTs). Adjust ingest to perform the download itself.
-- Inbound SMS: number `SmsUrl` points directly at `/api/sms/inbound` (today the Function forwards). Gate on `?u`/`?k`.
+- SMS send: extend existing `/api/sms/{userId}` send path to send via the Twilio Messages API using the decrypted API key secret (today `SMS_JS` does this with `API_KEY_SID:API_KEY_SECRET`). Gate on **paid** (see #3 — `user_is_paid`).
+- Recording callback: `recordingStatusCallback` (set in the `/voice/twiml` Dial opts) points at existing `/api/recordings/ingest`; backend downloads the media itself using the decrypted API key secret (today `RECORDING_STATUS_JS` downloads `recordingUrl + '.mp3'` with Basic auth then PUTs to the signed URL). Adjust ingest to perform the download → upload inline. Recording delete (`/api/recordings/{userId}` DELETE + retention purge) deletes via Twilio REST with the stored API key secret (today `DELETE_RECORDING_JS`).
+- Inbound SMS: number `SmsUrl` points directly at `/api/sms/inbound?u={userId}&k={secret}` (today `INCOMING_SMS_JS` forwards to the same route with `secret` in the body). Backend validates `?k` capability secret (constant-time). NOTE: existing-user Functions still POST `{ secret }` in the body — `/api/sms/inbound` must accept BOTH the body-`secret` (legacy) and the `?k` query (new) auth shapes.
 
 ### Extension changes
 
-- `SetupForm` → calls `provision()` (new `cloud.ts` helper) instead of `autoProvisionAll`. Replaces the multi-step `AutoSetupProgress` with a single ~3s spinner ("Connecting your Twilio account…").
+- `SetupForm` → after verifying creds + loading numbers (existing `twilio.verifyAccount`/`listPhoneNumbers` client-side), calls `registerDevice({ ..., numberSid, callerId, clientIdentity, email, marketingConsent, provision: true })` instead of `autoProvisionAll`. Replaces the multi-step `AutoSetupProgress` with a single ~3s spinner ("Connecting your Twilio account…"). `cloud.ts` `registerDevice` signature extended with the provisioning + email fields.
 - `offscreen/twilio-device.ts` `fetchToken`: when `settings.backendVoice`, POST to `/api/voice/token/{userId}` with device-secret auth; else keep the legacy `functionUrl/token` GET (existing users).
 - Delete/retire `ProvisioningWizard` multi-step UI, `AutoSetupProgress`. Keep `autoProvisionAll` in `twilio-rest.ts` only if any legacy path needs it; otherwise remove.
 
@@ -74,17 +80,21 @@ Add to `users` (or a dedicated `voice_config` table, keyed by user_id):
 - `caller_id TEXT`
 - `client_identity TEXT`
 - `account_sid TEXT` (if not already present)
+- `incoming_enabled BOOLEAN DEFAULT true`
+- `forward_enabled BOOLEAN DEFAULT false`
+- `forward_number TEXT`
+- `record_outgoing BOOLEAN DEFAULT false`
 
-RLS: service-role only (same as devices/device_functions).
+RLS: service-role only (same as devices/device_functions). The API key secret is encrypted at rest with `CONFIG_ENC_KEY` (existing `crypto.ts` `encryptSecret`/`decryptSecret`).
 
 ---
 
 ## #2 — Mandatory email at setup
 
-- Add a required `email` field to `SetupForm`, validated client-side (existing regex).
-- On submit, before/with provisioning, `POST /api/email/{userId}` with `{ email, productConsent: true, verify: false }`. Keep the optional marketing checkbox (default OFF — separate consent, invariant).
-- Backend `/api/email` POST: when body `verify === false`, store `email` + `product_email_consent_at` (+ `marketing_consent_at` if opted in) and return `{ ok: true }` WITHOUT generating a code or calling Resend (so no 503). When `verify` is absent/true, behavior is unchanged (generates + sends a code). Setup always passes `verify: false`. The PATCH verify route stays for future use but is unused by setup.
-- Remove `EmailCaptureSheet`, the `showEmailCapture` state in `App.tsx`, and the `emailCaptured`/`emailPromptSkipped` storage keys.
+- Add a required `email` field to `SetupForm`, validated client-side (existing regex). Submit is disabled until a valid email is present. Keep an optional marketing checkbox (default OFF — separate consent, invariant).
+- Email is captured in the SAME `/api/devices/register` call (no separate request, no second round trip). Register writes `email` + `product_email_consent_at = now()` (transactional/mandatory) and `marketing_consent_at = now()` only when `marketingConsent === true`. No verification code, no Resend dependency, no 503 path.
+- The standalone `/api/email/{userId}` POST/PATCH (code + Resend) is left intact for future use but is unused by setup. `EmailCaptureSheet`, the `showEmailCapture` state in `App.tsx`, and the `emailCaptured`/`emailPromptSkipped` storage keys are removed.
+- Edge case: existing users (already registered, re-running nothing) won't hit setup again, so they won't be force-prompted for email. Acceptable — mandatory email targets NEW installs (the churn problem). A future in-app prompt for legacy users is out of scope.
 
 ---
 
@@ -101,12 +111,26 @@ Current: `isPro = hasAccess`, and trial → `hasAccess` → all `PRO_FEATURES`. 
   - `managed_transcription` (new Feature) → granted when `paid || trialing`.
   - `ai_analysis` (Claude), `sms`, `recording`, `cloud_history`, `autodial_unlimited` → `paid` only.
   - gpt-5-mini chat → always available (free), unchanged.
-- `tier` stays `pro` for display when `paid || trialing`? — show a distinct **"Trial"** label when trialing so the UI/banner can differ. Add `trialing` (already present) + keep `isPro` meaning "has any elevated access" but gate paid features on a new `can()` that checks `paid` for paid-only features.
+- `Entitlements` gains a `paid: boolean` field. `can(f)` returns `true` for `managed_transcription` when `paid || trialing`; for all other (paid-only) features it requires `paid`. `trialing`/`daysLeft` already exist (drive popup + banner). `isPro` retained for display ("has elevated access") but is NOT the gate for paid-only features — `can()` is.
+- The backend `Subscription` shape already carries `status` + `hasAccess` + `daysLeft`; derive `paid` client-side from `status` + `currentPeriodEnd` (mirror `user_is_paid`).
 
 ### Backend gating
 
-- `lib/auth` / per-endpoint access checks for SMS, recording, and Claude AI must gate on **paid**, not `user_has_access` (which is true during trial). Managed transcription token mint (`/api/transcribe/token`) stays available during trial WITHOUT charging credits (trial covers it) — settle at $0 / skip the ledger spend while `trialing`, or grant trial transcription from a dedicated free bucket. Implementation: while `trialing`, transcription mint succeeds and settlement does not debit credits.
-- Claude models remain Pro-gated (already true via the 402 path); confirm trial users get 402 on Claude and gpt-5-mini works.
+New SQL function `user_is_paid(uid)` — mirrors `user_has_access` but EXCLUDES trialing:
+```
+active|past_due with current_period_end > now  → true
+cancelled with current_period_end > now        → true
+trialing                                        → FALSE
+else                                            → false
+```
+Replace `user_has_access` with `user_is_paid` in exactly three call sites (all currently grant during trial):
+- `app/api/sms/[userId]/route.ts` `requireAccess` (lines 18-19)
+- `app/api/recordings/[userId]/route.ts` `requireAccess` (lines 17-18)
+- `app/api/ai/chat/route.ts` `hasPro` (line 40) — keeps Claude paid-only; `FREE_MODELS`/gpt-5-mini path unchanged → trial + free users get gpt-5-mini, get 402 on Claude.
+
+`user_has_access` itself stays (still used by `/api/subscription` mirror + entitlements meaning "has elevated access incl. trial"). Do NOT delete it.
+
+**Managed transcription free during trial.** Transcription is credit-metered, NOT subscription-gated today (`/api/transcribe/token` reserves; `/api/transcribe/settle` debits). Add a trialing short-circuit: when `user_is_trialing(uid)` (or reuse: `user_has_access && !user_is_paid`), the token mint succeeds WITHOUT a credit reserve, and settle is a no-op debit (optionally write a 0-credit ledger row for observability). Paid users keep normal credit metering. Free (no trial / expired) users: managed transcription falls back to the existing credit path (free_grant taste → 402), BYO Deepgram always available. Call audio is never affected by a 402.
 
 ### Trial-start popup
 
@@ -127,9 +151,9 @@ Current: `isPro = hasAccess`, and trial → `hasAccess` → all `PRO_FEATURES`. 
 
 ## Components / files touched
 
-**Backend (new):** `app/api/provision/[userId]/route.ts`, `app/api/voice/token/[userId]/route.ts`, `app/api/voice/twiml/[userId]/route.ts`. **(modified):** `app/api/sms/[userId]/route.ts` (send via API key), `app/api/sms/inbound/route.ts` (direct, capability-gated), `app/api/recordings/ingest/route.ts` (download media), `app/api/email/[userId]/route.ts` (no-verify write), entitlement/access checks for SMS/recording/AI/transcription. **(new SQL):** `scripts/migration-backend-voice.sql`.
+**Backend (new):** `app/api/voice/token/[userId]/route.ts`, `app/api/voice/twiml/[userId]/route.ts`. **(modified):** `app/api/devices/register/route.ts` (fold in provisioning + email when `provision:true`), `app/api/sms/[userId]/route.ts` (send via stored API key; gate `user_is_paid`), `app/api/sms/inbound/route.ts` (accept `?k` query auth alongside legacy body `secret`), `app/api/recordings/[userId]/route.ts` (gate `user_is_paid`; delete via API key), `app/api/recordings/ingest/route.ts` (download + upload media inline), `app/api/ai/chat/route.ts` (`hasPro` → `user_is_paid`), `app/api/transcribe/token/route.ts` + `app/api/transcribe/settle/route.ts` (trialing → free, no debit). **(new SQL):** `scripts/migration-backend-voice.sql` (voice-config columns + `user_is_paid` / `user_is_trialing` functions).
 
-**Extension (modified):** `options/SetupForm.tsx` (email field + provision call), `options/ProvisioningWizard.tsx` + `options/AutoSetupProgress.tsx` (collapse to single fast spinner / retire), `offscreen/twilio-device.ts` (backend token path), `shared/cloud.ts` (`provision()` helper), `shared/entitlements.ts` (paid vs trial split + `managed_transcription` feature), `sidepanel/App.tsx` (remove email sheet; mount trial popup + banner). **(new):** `sidepanel/components/TrialStartPopup.tsx`, `sidepanel/components/TrialBanner.tsx`. **(removed):** `sidepanel/components/EmailCaptureSheet.tsx`.
+**Extension (modified):** `options/SetupForm.tsx` (email field + single register-with-provision call), `options/ProvisioningWizard.tsx` + `options/AutoSetupProgress.tsx` (collapse to single fast spinner / retire the multi-step UI), `offscreen/twilio-device.ts` (backend token path when `backendVoice`), `shared/cloud.ts` (`registerDevice` extended with `numberSid`/`callerId`/`clientIdentity`/`email`/`marketingConsent`/`provision` fields), `shared/types.ts` (`Settings.backendVoice`), `shared/entitlements.ts` (paid vs trial split + `managed_transcription` feature), `sidepanel/App.tsx` (remove email sheet; mount trial popup + banner). **(new):** `sidepanel/components/TrialStartPopup.tsx`, `sidepanel/components/TrialBanner.tsx`. **(removed):** `sidepanel/components/EmailCaptureSheet.tsx`.
 
 ## Testing
 
