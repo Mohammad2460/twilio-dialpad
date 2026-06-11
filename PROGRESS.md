@@ -5,6 +5,24 @@
 
 ---
 
+## UX Overhaul + Monetization (Batch 1) — branch `claude/pensive-bardeen-363b43`
+
+_Spec: `docs/superpowers/specs/2026-06-11-ux-overhaul-monetization-design.md` · Plan: `docs/superpowers/plans/2026-06-11-ux-overhaul-monetization.md`. PR held for batch 2 (user has more to add)._
+
+Shipped (both typechecks 0 errors, `pnpm build` ✓):
+- **Standalone AI tab** — new bottom-nav "AI" tab. `AiChatbox` made context-optional (general chat OR pick a recent transcribed call). Backend `/api/ai/chat` gained additive `mode: 'call' | 'general'` (general system prompt when no transcript). `streamChat` transcript now optional + `mode`.
+- **PRO-locked models** — model picker shows a PRO badge; tapping a Claude model as a free user opens `UpgradeModal` (benefits + checkout) instead of failing. Backend 402 stays the source of truth.
+- **AI promo** — "✨ Ask AI about your calls" button below the dialpad → AI tab.
+- **Pro tab = sales surface** — Free vs Pro tier comparison + credit-system explainer + top-up packs (1000/2500/5000) in upsell + trialing states.
+- **Credits** — header credits chip in `StatusBar` (cached→live, taps → Pro).
+- **Dialpad caret** — number display is now a focusable `<input>` with a visible caret (click-to-position, type, paste); global keydown guarded so the field owns typing.
+- **Options tab → setup-only** — stripped to the Twilio provisioning wizard + mic-permission card; all duplicated controls removed (they live in the side-panel `SettingsTab`). `options_page` kept (mic grant needs a full tab). Options bundle 11.4kB.
+- **Dup settings removed** — killed the `StatusBar` gear ⚙ and the `Dialpad` "Settings" pill; footer Settings tab is the sole entry.
+- **Bug: recurring mic banner** — new `useMicPermission()` (Permissions API); banner gated on REAL mic state (`prompt`/`denied`), decoupled from device registration. Once granted it never recurs.
+- **Bug: transcript sometimes doesn't start** — `twilio-device.ts` retries `TranscriptionController.start` once on transient failure, then surfaces a non-fatal "transcription unavailable" signal (call audio untouched).
+
+---
+
 ## v2 — Managed AI + credits (Phase 8) — IN PROGRESS
 
 _Branch `claude/v2-managed-ai` (off main `1ab3d24`). Spec: `docs/superpowers/specs/2026-06-10-v2-managed-ai-credits-design.md`._
