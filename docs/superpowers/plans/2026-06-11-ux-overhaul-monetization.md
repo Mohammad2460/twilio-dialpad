@@ -594,7 +594,10 @@ export function AiTab() {
           setTranscript(undefined);
           return;
         }
-        const text = t.segments.map((s) => `${s.speaker}: ${s.text}`).join('\n');
+        // Match CallHistoryDetail labeling: speaker is 'user' | 'remote'.
+        const text = t.segments
+          .map((s) => `${s.speaker === 'user' ? 'You' : 'Caller'}: ${s.text}`)
+          .join('\n');
         setTranscript(text);
       })
       .catch(() => {
