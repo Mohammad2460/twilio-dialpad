@@ -66,7 +66,16 @@ export function EmailCaptureSheet({ onDone }: Props) {
       }
       setStep('verify');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Something went wrong. Please try again.');
+      const msg = e instanceof Error ? e.message : '';
+      // Email delivery isn't configured on the backend (503) — this is an OPTIONAL
+      // feature, so don't nag or block the panel. Dismiss + remember the skip so it
+      // never reappears until delivery is set up.
+      if (/email_delivery_unavailable|503/.test(msg)) {
+        await chrome.storage.local.set({ emailPromptSkipped: true });
+        onDone();
+        return;
+      }
+      setError('Something went wrong. Please try again.');
     } finally {
       setBusy(false);
     }
