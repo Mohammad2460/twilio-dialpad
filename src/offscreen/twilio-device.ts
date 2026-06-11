@@ -369,8 +369,8 @@ export class DeviceManager {
             this.transcription = null;
             return;
           }
-          try {
-            await this.transcription!.start(
+          const startOnce = () =>
+            this.transcription!.start(
               call,
               callSid,
               direction,
@@ -379,9 +379,22 @@ export class DeviceManager {
               managed ? (model ?? 'nova-3') : model,
               managed,
             );
-          } catch (e) {
-            console.warn('[transcription] start failed', e);
-            this.transcription = null;
+          try {
+            await startOnce();
+          } catch (e1) {
+            // Transient connect race (managed-token / Deepgram socket). Retry once.
+            console.warn('[transcription] start failed, retrying once', e1);
+            await sleep(600);
+            try {
+              if (!this.transcription) return; // call may have ended during the wait
+              await startOnce();
+            } catch (e2) {
+              console.warn('[transcription] start failed after retry', e2);
+              this.transcription = null;
+              _transcriptErrorCb?.(
+                e2 instanceof Error ? e2 : new Error('Transcription unavailable for this call'),
+              );
+            }
           }
         })();
       }
