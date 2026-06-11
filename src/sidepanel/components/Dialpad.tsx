@@ -137,6 +137,8 @@ export function Dialpad() {
   useEffect(() => {
     function onKey(ev: KeyboardEvent) {
       if (pickerOpen) return; // don't type while picker is open
+      const ae = document.activeElement;
+      if (ae instanceof HTMLInputElement || ae instanceof HTMLTextAreaElement) return; // field owns typing
       if (/^[0-9*#]$/.test(ev.key)) {
         press(ev.key);
       } else if (ev.key === 'Backspace') {
@@ -158,19 +160,8 @@ export function Dialpad() {
   return (
     <div className="flex h-full flex-col p-4">
 
-      {/* ── Top row: settings gear + auto-dial entry ── */}
-      <div className="mb-1 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => setView('settings')}
-          className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100"
-          title="Settings"
-        >
-          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-            <path fillRule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.53 1.53 0 01-2.29.95c-1.37-.84-2.94.73-2.1 2.1.55.9.18 2.07-.95 2.29-1.56.38-1.56 2.6 0 2.98a1.53 1.53 0 01.95 2.29c-.84 1.37.73 2.94 2.1 2.1a1.53 1.53 0 012.29.95c.38 1.56 2.6 1.56 2.98 0a1.53 1.53 0 012.29-.95c1.37.84 2.94-.73 2.1-2.1a1.53 1.53 0 01.95-2.29c1.56-.38 1.56-2.6 0-2.98a1.53 1.53 0 01-.95-2.29c.84-1.37-.73-2.94-2.1-2.1a1.53 1.53 0 01-2.29-.95zM10 13a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-          </svg>
-          Settings
-        </button>
+      {/* ── Top row: auto-dial entry ── */}
+      <div className="mb-1 flex items-center justify-end">
         <button
           type="button"
           onClick={() => setView('autodial')}
@@ -367,11 +358,18 @@ export function Dialpad() {
         </div>
       )}
 
-      {/* ── Number Display ── */}
+      {/* ── Number Display (focusable, shows caret) ── */}
       <div className="flex flex-col items-center gap-1 py-3">
-        <div className="text-3xl font-light tracking-wider text-gray-900 min-h-[2.25rem]">
-          {input || <span className="text-gray-300">Enter number</span>}
-        </div>
+        <input
+          type="tel"
+          inputMode="tel"
+          value={input}
+          onChange={(e) => setInput(e.target.value.replace(/[^\d+*#]/g, '').slice(0, 32))}
+          onKeyDown={(e) => { if (e.key === 'Enter') call(); }}
+          placeholder="Enter number"
+          aria-label="Phone number"
+          className="w-full bg-transparent text-center text-3xl font-light tracking-wider text-gray-900 caret-brand-600 outline-none placeholder:text-gray-300 min-h-[2.25rem]"
+        />
         <div className="text-xs text-gray-500 min-h-[1rem]">
           {input && (norm.ok ? `${norm.country ?? ''} • ${norm.national}` : norm.reason ?? '')}
         </div>
@@ -416,6 +414,15 @@ export function Dialpad() {
           ⌫
         </button>
       </div>
+
+      {/* ── AI promo — drive AI usage ── */}
+      <button
+        type="button"
+        onClick={() => setView('ai')}
+        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+      >
+        <span>✨</span> Ask AI about your calls
+      </button>
     </div>
   );
 }

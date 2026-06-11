@@ -150,13 +150,19 @@ class TranscriptionController {
     });
 
     this.startedAt = Date.now();
-    this.mixed = mixToStereo(local, remote);
+    const mixed = mixToStereo(local, remote);
+    this.mixed = mixed;
 
     const onSegment = (seg: TranscriptSegment) => {
       if (seg.isFinal) this.segments.push(seg);
       _transcriptSegmentCb?.(callSid, seg);
     };
 
+    // Transient-failure retry lives INSIDE each vendor path where the failure is
+    // actually observable: ManagedTranscription.openWindow retries the initial
+    // token-mint/socket open once; DeepgramSession.start self-retries the socket
+    // once on ws error. Here we only clean up + surface a hard failure. Call audio
+    // is never affected — transcription is fully independent of the WebRTC call.
     try {
       if (managed) {
         // Managed path (P8.3): our Deepgram key via short-lived JWTs, metered by
@@ -164,7 +170,7 @@ class TranscriptionController {
         this.managed = new ManagedTranscription({
           userId: managed.userId,
           callSid,
-          stream: this.mixed.stream,
+          stream: mixed.stream,
           startedAt: this.startedAt,
           model: model ?? 'nova-3',
           onSegment,
@@ -174,6 +180,8 @@ class TranscriptionController {
               _transcriptErrorCb?.(new Error('Transcription paused — out of credits.'));
             } else if (reason === 'unavailable') {
               _transcriptErrorCb?.(new Error('Managed transcription unavailable.'));
+            } else if (reason === 'error') {
+              _transcriptErrorCb?.(new Error('Transcription unavailable for this call.'));
             }
           },
         });
@@ -190,7 +198,7 @@ class TranscriptionController {
             _transcriptErrorCb?.(err);
           },
         });
-        await this.session.start(this.mixed.stream);
+        await this.session.start(mixed.stream);
         console.log('[transcription] Deepgram session started');
       }
     } catch (e) {
@@ -370,6 +378,8 @@ export class DeviceManager {
             return;
           }
           try {
+            // start() handles its own (non-fatal) failures internally, incl. a
+            // one-shot retry of the vendor session. This catch is a final safety net.
             await this.transcription!.start(
               call,
               callSid,
@@ -380,7 +390,7 @@ export class DeviceManager {
               managed,
             );
           } catch (e) {
-            console.warn('[transcription] start failed', e);
+            console.warn('[transcription] start threw unexpectedly', e);
             this.transcription = null;
           }
         })();

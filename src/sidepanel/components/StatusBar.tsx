@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { useCallStore } from '../stores/call-store';
 import { getManager } from '../hooks/use-device';
 import { IncomingToggle } from './IncomingToggle';
-import { getSubscription, type Subscription } from '@shared/cloud';
+import { getSubscription, ensureCloudAccount, type Subscription } from '@shared/cloud';
+import { useMicPermission } from '../hooks/use-mic-permission';
+import { getCachedCreditState, getCreditBalance } from '@shared/credits';
 
 const STATE_META: Record<string, { text: string; color: string }> = {
   uninitialized: { text: 'Not initialized', color: 'bg-gray-200 text-gray-600' },
@@ -22,6 +24,8 @@ export function StatusBar() {
   const trialSub = useTrialSubscription();
   const setView = useCallStore((s) => s.setView);
   const callCount = useCallStore((s) => s.history.length);
+  const micPerm = useMicPermission();
+  const micNeedsGrant = micPerm === 'prompt' || micPerm === 'denied';
 
   function retryInit() {
     const s = useCallStore.getState().settings;
@@ -53,27 +57,21 @@ export function StatusBar() {
               ↺ Connect
             </button>
           )}
-          <button
-            type="button"
-            onClick={() => chrome.runtime.openOptionsPage()}
-            title="Settings"
-            className="rounded p-1 text-gray-400 hover:bg-gray-100 text-sm"
-          >
-            ⚙
-          </button>
+          <CreditsChip />
         </div>
       </header>
 
-      {/* Mic banner — always show until Ready, directing to options page where getUserMedia works */}
-      {deviceState !== 'registered' && settings && (
+      {/* Mic banner — gated on REAL mic permission, not device state. Once granted
+          it never reappears; transient connecting/offline states don't trigger it. */}
+      {micNeedsGrant && settings && (
         <div className="bg-amber-50 px-3 py-2 text-xs text-amber-800 border-b border-amber-100 flex items-center justify-between gap-2">
-          <span>Microphone permission needed for calls.</span>
+          <span>{micPerm === 'denied' ? 'Microphone blocked — fix to make calls.' : 'Allow microphone to make calls.'}</span>
           <button
             type="button"
             onClick={() => chrome.runtime.openOptionsPage()}
             className="shrink-0 rounded bg-amber-600 px-2 py-1 text-white text-xs hover:bg-amber-700"
           >
-            Fix in Settings →
+            Grant mic →
           </button>
         </div>
       )}
@@ -180,4 +178,42 @@ function useCloudSyncBlocked(): boolean {
     };
   }, []);
   return blocked;
+}
+
+/** Compact AI-credits chip in the header. Cached-first, then live. Taps → Pro. */
+function CreditsChip() {
+  const [balance, setBalance] = useState<number | null>(null);
+  const setView = useCallStore((s) => s.setView);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const cached = await getCachedCreditState();
+      if (!cancelled && cached) setBalance(cached.balance);
+      try {
+        const acct = await ensureCloudAccount();
+        const state = await getCreditBalance(acct.userId);
+        if (!cancelled) setBalance(state.balance);
+      } catch {
+        /* not registered */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (balance === null) return null;
+  const low = balance <= 50;
+  return (
+    <button
+      type="button"
+      onClick={() => setView('pro')}
+      title="AI credits — tap to manage"
+      className={[
+        'rounded-full px-2 py-0.5 text-xs font-medium border',
+        low ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-50 text-gray-700 border-gray-200',
+      ].join(' ')}
+    >
+      {balance} cr
+    </button>
+  );
 }

@@ -205,6 +205,7 @@ export function ProTab() {
           <p className="text-xs text-brand-700 mt-0.5">Trial ends {trialEnds}</p>
         </div>
 
+        <TierComparison />
         <UpgradeSheet
           onUpgrade={handleUpgrade}
           loading={upgradeLoading}
@@ -273,12 +274,47 @@ export function ProTab() {
   return (
     <div className="space-y-4 p-4">
       <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+      <TierComparison />
       <UpgradeSheet
         onUpgrade={handleUpgrade}
         loading={upgradeLoading}
         error={upgradeError}
         ctaLabel="Start free trial"
       />
+      <CreditsSection />
     </div>
+  );
+}
+
+/** Free vs Pro tier comparison + credit-system explainer. Shown in upsell states. */
+function TierComparison() {
+  return (
+    <section className="space-y-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div className="rounded-lg border border-gray-200 bg-white p-3">
+          <p className="text-sm font-semibold text-gray-900">Free</p>
+          <p className="mt-0.5 text-[11px] text-gray-500">$0</p>
+          <ul className="mt-2 space-y-1 text-[11px] text-gray-600">
+            <li>✓ Calling (your Twilio)</li>
+            <li>✓ GPT-5 mini AI</li>
+            <li>✓ Bring-your-own Deepgram</li>
+          </ul>
+        </div>
+        <div className="rounded-lg border-2 border-brand-300 bg-brand-50 p-3">
+          <p className="text-sm font-semibold text-brand-900">Pro</p>
+          <p className="mt-0.5 text-[11px] text-brand-700">$9/mo · 7-day trial</p>
+          <ul className="mt-2 space-y-1 text-[11px] text-brand-800">
+            <li>✓ All Claude models (Haiku/Sonnet/Opus)</li>
+            <li>✓ 1000 AI credits / month</li>
+            <li>✓ Managed transcription</li>
+            <li>✓ SMS · recording · cloud + Claude MCP</li>
+          </ul>
+        </div>
+      </div>
+      <div className="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-[11px] text-gray-600">
+        <span className="font-medium text-gray-900">How credits work:</span> 1 credit = $0.01.
+        AI is metered by real model usage. Pro includes 1000 credits/month; top up any time below.
+      </div>
+    </section>
   );
 }

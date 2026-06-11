@@ -25,6 +25,29 @@ _Last updated: 2026-06-11._
 
 ---
 
+## UX Overhaul + Monetization (Batch 1) — [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6)
+
+_Spec: `docs/superpowers/specs/2026-06-11-ux-overhaul-monetization-design.md` · Plan: `docs/superpowers/plans/2026-06-11-ux-overhaul-monetization.md`. Batch 2 to follow in a new session._
+
+Shipped (both typechecks 0 errors, `pnpm build` ✓; full-branch code review passed, one Important finding fixed):
+- **Standalone AI tab** — new bottom-nav "AI" tab. `AiChatbox` made context-optional (general chat OR pick a recent transcribed call). Backend `/api/ai/chat` gained additive `mode: 'call' | 'general'` (general system prompt when no transcript). `streamChat` transcript now optional + `mode`.
+- **PRO-locked models** — model picker shows a PRO badge; tapping a Claude model as a free user opens `UpgradeModal` (benefits + checkout) instead of failing. Backend 402 stays the source of truth.
+- **AI promo** — "✨ Ask AI about your calls" button below the dialpad → AI tab.
+- **Pro tab = sales surface** — Free vs Pro tier comparison + credit-system explainer + top-up packs (1000/2500/5000) in upsell + trialing states.
+- **Credits** — header credits chip in `StatusBar` (cached→live, taps → Pro).
+- **Dialpad caret** — number display is now a focusable `<input>` with a visible caret (click-to-position, type, paste); global keydown guarded so the field owns typing.
+- **Options tab → setup-only** — stripped to the Twilio provisioning wizard + mic-permission card; all duplicated controls removed (they live in the side-panel `SettingsTab`). `options_page` kept (mic grant needs a full tab).
+- **Dup settings removed** — killed the `StatusBar` gear ⚙ and the `Dialpad` "Settings" pill; footer Settings tab is the sole entry.
+- **Bug: recurring mic banner** — new `useMicPermission()` (Permissions API); banner gated on REAL mic state (`prompt`/`denied`), decoupled from device registration. Once granted it never recurs.
+- **Bug: transcript sometimes doesn't start** — the managed path (`managed-transcription.ts`) now retries the INITIAL window once on a transient (network/503/socket-open) failure; terminal 402 never retries. BYO path already self-retries internally. `AiChatbox` aborts the AI stream on unmount. Call audio never affected.
+
+### Batch 2 (next session) — deferred minors from review
+- ProTab "expired" view shows the credit explainer + CreditsSection (cosmetic dedupe).
+- Locked-model upgrade popup can trigger via two paths (harmless, modal idempotent).
+- Chat input Enter has no shift-guard (single-line — only matters if it becomes multi-line).
+
+---
+
 ## v1 (shipped earlier — [PR #3](https://github.com/Mohammad2460/twilio-dialpad/pull/3))
 
 ## Status: v1 COMPLETE — session closed. Working tree clean, branch in sync, CI green.

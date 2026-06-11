@@ -74,18 +74,23 @@ export async function* streamChat(
   userId: string,
   opts: {
     model: string;
-    transcript: string;
+    transcript?: string;
     messages: ChatTurn[];
     idempotencyKey?: string;
+    mode?: 'call' | 'general';
+    /** Abort the request (e.g. component unmount) to stop streaming + billing. */
+    signal?: AbortSignal;
   },
 ): AsyncGenerator<ChatEvent> {
+  const { signal, ...payload } = opts;
   const res = await fetch(`${BASE_URL}/api/ai/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: await authHeader(userId),
     },
-    body: JSON.stringify(opts),
+    body: JSON.stringify(payload),
+    signal,
   });
 
   if (!res.ok || !res.body) {
