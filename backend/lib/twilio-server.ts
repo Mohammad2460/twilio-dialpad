@@ -54,6 +54,18 @@ export async function sendSms(
 export async function downloadRecording(
   apiKeySid: string, apiKeySecret: string, recordingUrl: string,
 ): Promise<ArrayBuffer> {
+  // SSRF / credential-leak guard: the recordingUrl arrives in a webhook POST body
+  // and we attach the Twilio API-key secret as Basic auth — so it MUST be a real
+  // Twilio media URL, never an attacker-controlled host.
+  let host: string;
+  try {
+    host = new URL(recordingUrl).host;
+  } catch {
+    throw new Error('invalid recordingUrl');
+  }
+  if (host !== 'api.twilio.com' && !host.endsWith('.twilio.com')) {
+    throw new Error(`refusing to fetch recording from non-Twilio host: ${host}`);
+  }
   const res = await fetch(recordingUrl + '.mp3', { headers: { Authorization: basic(apiKeySid, apiKeySecret) } });
   if (!res.ok) throw new Error(`recording download ${res.status}`);
   return res.arrayBuffer();
