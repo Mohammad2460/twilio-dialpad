@@ -14,7 +14,11 @@
 import type { TranscriptSegment } from './types';
 
 export interface DeepgramSessionOptions {
-  apiKey: string;
+  /** BYO Deepgram API key (free path). Mutually exclusive with bearerToken. */
+  apiKey?: string;
+  /** Managed path: short-lived Deepgram JWT from our backend (P8.3). Browser WS
+   * passes it via the `['bearer', jwt]` subprotocol; the key never touches the client. */
+  bearerToken?: string;
   /** ms since call start when this session began — used to compute relative ts. */
   startedAt: number;
   /** Called for every interim + final segment. */
@@ -75,8 +79,12 @@ export class DeepgramSession {
     const url = `${DEEPGRAM_WS}?${params.toString()}`;
     console.log('[deepgram] connecting', url);
 
-    // WebSocket subprotocol auth: ["token", "<api key>"]
-    this.ws = new WebSocket(url, ['token', this.opts.apiKey]);
+    // WebSocket subprotocol auth: ["token", <api key>] for BYO keys, or
+    // ["bearer", <jwt>] for the managed short-lived token.
+    const subprotocol: [string, string] = this.opts.bearerToken
+      ? ['bearer', this.opts.bearerToken]
+      : ['token', this.opts.apiKey ?? ''];
+    this.ws = new WebSocket(url, subprotocol);
     this.ws.binaryType = 'arraybuffer';
 
     return new Promise<void>((resolve, reject) => {

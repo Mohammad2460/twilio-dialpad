@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { verifyWebhookSignature } from '@/lib/dodo';
+import { grant, getActivePricing } from '@/lib/credits';
 
 /**
  * POST /api/webhook/dodo
@@ -144,6 +145,41 @@ export async function POST(req: NextRequest) {
       // Fall through — still flush identity if payload carried email/name.
       break;
     }
+  }
+
+  // ── Credit grants (v2) ──────────────────────────────────────────────────────
+  // Monthly Pro allotment on activation/renewal; one-time top-up on purchase.
+  // Idempotent on the webhook delivery id so retries never double-grant. Grant
+  // failures are logged but never fail the webhook (payment state already applied).
+  try {
+    const pricing = await getActivePricing();
+
+    if (eventType === 'subscription.active' || eventType === 'subscription.renewed') {
+      const amount = pricing.monthly_grant;
+      // Monthly credits expire at cycle end (no roll-over). Fall back to ~31d if
+      // the payload carried no period end.
+      const expiresAt =
+        periodEnd ?? new Date(Date.now() + 31 * 24 * 60 * 60 * 1000).toISOString();
+      if (amount > 0) {
+        await grant(userId, amount, 'grant', expiresAt, `grant:${webhookId}`, pricing.version);
+      }
+    }
+
+    // Top-up: a one-time purchase carrying `topup_credits` in metadata. Flat
+    // $0.01/credit; longer expiry from config. MUST gate on the payment-success
+    // event — metadata can ride on payment.failed / other lifecycle events, and
+    // granting on mere metadata presence would hand out credits without payment.
+    if (eventType === 'payment.succeeded') {
+      const topupRaw = (data.metadata as Record<string, string> | undefined)?.topup_credits;
+      const topupCredits = topupRaw ? parseInt(topupRaw, 10) : 0;
+      if (Number.isFinite(topupCredits) && topupCredits > 0) {
+        const exp = new Date();
+        exp.setMonth(exp.getMonth() + pricing.topup_expiry_months);
+        await grant(userId, topupCredits, 'topup', exp.toISOString(), `topup:${webhookId}`, pricing.version);
+      }
+    }
+  } catch (e) {
+    console.error('[webhook/dodo] credit grant failed (non-fatal)', e, 'event', eventType, 'user', userId);
   }
 
   if (Object.keys(update).length === 0) {

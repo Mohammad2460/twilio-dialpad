@@ -7,6 +7,7 @@ import {
 } from '@shared/cloud';
 import type { Subscription } from '@shared/cloud';
 import { UpgradeSheet } from './UpgradeSheet';
+import { CreditsSection } from './CreditsSection';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -135,6 +136,8 @@ export function ProTab() {
     return (
       <div className="space-y-4 p-4">
         <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+
+        <CreditsSection />
         <UpgradeSheet
           onUpgrade={handleUpgrade}
           loading={upgradeLoading}
@@ -154,6 +157,8 @@ export function ProTab() {
     return (
       <div className="space-y-4 p-4">
         <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+
+        <CreditsSection />
 
         <div className="rounded-lg border border-green-200 bg-green-50 p-4 space-y-1">
           <p className="text-sm font-semibold text-green-800">Pro — active</p>
@@ -191,6 +196,8 @@ export function ProTab() {
       <div className="space-y-4 p-4">
         <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
 
+        <CreditsSection />
+
         <div className="rounded-lg border border-brand-200 bg-brand-50 p-3">
           <p className="text-sm font-semibold text-brand-800">
             Pro trial — {daysLeft} {daysLeft === 1 ? 'day' : 'days'} left
@@ -216,6 +223,8 @@ export function ProTab() {
       <div className="space-y-4 p-4">
         <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
 
+        <CreditsSection />
+
         <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
           <p className="text-sm font-semibold text-amber-800">Cancelled</p>
           <p className="text-xs text-amber-700 mt-0.5">
@@ -239,6 +248,8 @@ export function ProTab() {
     return (
       <div className="space-y-4 p-4">
         <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+
+        <CreditsSection />
 
         <div className="rounded-lg border border-red-200 bg-red-50 p-3">
           <p className="text-sm font-semibold text-red-800">Payment issue</p>

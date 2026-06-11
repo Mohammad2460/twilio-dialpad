@@ -4,6 +4,7 @@ import type { Transcript } from '@shared/types';
 import { formatForDisplay } from '@shared/phone';
 import { computeTalkRatio } from '@shared/talk-ratio';
 import { PaywallGate } from './PaywallGate';
+import { AiChatbox } from './AiChatbox';
 
 interface Props {
   callSid: string;
@@ -15,6 +16,7 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
+  const [showChat, setShowChat] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -153,6 +155,31 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
                   </p>
                 </div>
               </PaywallGate>
+            </div>
+          )}
+
+          {/* Managed AI chatbox — ask Claude in-extension (credit-metered). */}
+          {t && !query && (
+            <div className="mb-3">
+              {!showChat ? (
+                <button
+                  onClick={() => setShowChat(true)}
+                  className="w-full rounded-lg border border-blue-200 bg-blue-50 p-3 text-left"
+                >
+                  <p className="text-xs font-semibold text-blue-800">Ask AI about this call</p>
+                  <p className="mt-0.5 text-[11px] text-gray-600">
+                    Managed AI — no setup. GPT-5 mini is free; Claude models are Pro.
+                  </p>
+                </button>
+              ) : (
+                <div className="h-72 rounded-lg border border-gray-200 overflow-hidden">
+                  <AiChatbox
+                    transcript={t.segments
+                      .map((s) => `${s.speaker === 'user' ? 'You' : 'Caller'}: ${s.text}`)
+                      .join('\n')}
+                  />
+                </div>
+              )}
             </div>
           )}
 
