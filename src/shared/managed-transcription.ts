@@ -60,10 +60,26 @@ export class ManagedTranscription {
     return this.windowStart ? Math.max(0, Math.round((Date.now() - this.windowStart) / 1000)) : 0;
   }
 
-  /** Settle the prior window (if any) + reserve the next + mint a token, then connect. */
-  private async openWindow(): Promise<void> {
+  /** Settle the prior window (if any) + reserve the next + mint a token, then connect.
+   *  `retriesLeft` retries TRANSIENT failures (network / 5xx / socket open) on the
+   *  INITIAL window only — this is what stopped transcripts from ever starting on a
+   *  flaky connect. Terminal states (402 insufficient_credits) never retry. */
+  private async openWindow(retriesLeft = 1): Promise<void> {
     if (this.stopped) return;
+    const isInitial = this.windowIdx === 0;
     const prevSeconds = this.prevRequestId ? this.elapsedSeconds() : undefined;
+
+    // Retry the initial open once on a transient failure; otherwise stop gracefully.
+    const onTransient = async (reason: string): Promise<void> => {
+      if (isInitial && retriesLeft > 0 && !this.stopped) {
+        console.warn('[managed-transcription] transient open failure, retrying once:', reason);
+        await new Promise((r) => setTimeout(r, 600));
+        if (this.stopped) return;
+        await this.openWindow(retriesLeft - 1);
+        return;
+      }
+      this.finish(reason);
+    };
 
     let resp: Response;
     try {
@@ -78,20 +94,20 @@ export class ManagedTranscription {
         }),
       });
     } catch {
-      this.finish('error');
+      await onTransient('error');
       return;
     }
 
     if (resp.status === 402) {
-      this.finish('insufficient_credits');
+      this.finish('insufficient_credits'); // terminal — never retry
       return;
     }
     if (resp.status === 503) {
-      this.finish('unavailable');
+      await onTransient('unavailable'); // may be a cold start — retry initial once
       return;
     }
     if (!resp.ok) {
-      this.finish('error');
+      await onTransient('error');
       return;
     }
 
@@ -113,7 +129,11 @@ export class ManagedTranscription {
       await session.start(this.opts.stream);
     } catch (e) {
       console.warn('[managed-transcription] session start failed', e);
-      this.finish('error');
+      // Roll back this window's reservation bookkeeping so a retry re-mints cleanly.
+      this.prevRequestId = null;
+      this.windowIdx = 0;
+      this.windowStart = 0;
+      await onTransient('error');
       return;
     }
 

@@ -150,24 +150,27 @@ class TranscriptionController {
     });
 
     this.startedAt = Date.now();
-    this.mixed = mixToStereo(local, remote);
+    const mixed = mixToStereo(local, remote);
+    this.mixed = mixed;
 
     const onSegment = (seg: TranscriptSegment) => {
       if (seg.isFinal) this.segments.push(seg);
       _transcriptSegmentCb?.(callSid, seg);
     };
 
-    // The vendor session open (Deepgram socket / managed JWT mint) is the flaky
-    // step that intermittently left calls with no transcript. Wrap it so we can
-    // retry once on a transient failure before giving up. Call audio is untouched.
-    const startSession = async (): Promise<void> => {
+    // Transient-failure retry lives INSIDE each vendor path where the failure is
+    // actually observable: ManagedTranscription.openWindow retries the initial
+    // token-mint/socket open once; DeepgramSession.start self-retries the socket
+    // once on ws error. Here we only clean up + surface a hard failure. Call audio
+    // is never affected — transcription is fully independent of the WebRTC call.
+    try {
       if (managed) {
         // Managed path (P8.3): our Deepgram key via short-lived JWTs, metered by
         // credits. Stops gracefully at zero balance; never affects the call.
         this.managed = new ManagedTranscription({
           userId: managed.userId,
           callSid,
-          stream: this.mixed!.stream,
+          stream: mixed.stream,
           startedAt: this.startedAt,
           model: model ?? 'nova-3',
           onSegment,
@@ -177,6 +180,8 @@ class TranscriptionController {
               _transcriptErrorCb?.(new Error('Transcription paused — out of credits.'));
             } else if (reason === 'unavailable') {
               _transcriptErrorCb?.(new Error('Managed transcription unavailable.'));
+            } else if (reason === 'error') {
+              _transcriptErrorCb?.(new Error('Transcription unavailable for this call.'));
             }
           },
         });
@@ -193,36 +198,17 @@ class TranscriptionController {
             _transcriptErrorCb?.(err);
           },
         });
-        await this.session.start(this.mixed!.stream);
+        await this.session.start(mixed.stream);
         console.log('[transcription] Deepgram session started');
       }
-    };
-
-    try {
-      await startSession();
-    } catch (e1) {
-      // Transient open failure — drop the half-built session and retry once.
-      console.warn('[transcription] session start failed, retrying once', e1);
+    } catch (e) {
+      // Hard failure — clean up streams, surface error, but don't break the call.
+      console.error('[transcription] start failed', e);
+      this.mixed?.dispose();
+      this.mixed = null;
       this.session = null;
       this.managed = null;
-      await sleep(600);
-      if (this.cancelled) {
-        this.mixed?.dispose();
-        this.mixed = null;
-        this._meta = { callSid, direction, remoteNumber };
-        return;
-      }
-      try {
-        await startSession();
-      } catch (e2) {
-        // Hard failure — clean up streams, surface error, but don't break the call.
-        console.error('[transcription] start failed after retry', e2);
-        this.mixed?.dispose();
-        this.mixed = null;
-        this.session = null;
-        this.managed = null;
-        _transcriptErrorCb?.(e2 instanceof Error ? e2 : new Error(String(e2)));
-      }
+      _transcriptErrorCb?.(e instanceof Error ? e : new Error(String(e)));
     }
 
     // Capture remoteNumber + direction for finalize.
