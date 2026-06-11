@@ -1,10 +1,31 @@
-# PROGRESS — Twilio Dialpad v1
+# PROGRESS — Twilio Dialpad
 
-> Canonical handoff. Source of truth = git history + [PR #3](https://github.com/Mohammad2460/twilio-dialpad/pull/3).
-> To resume in a new session: read this file + `git log origin/main..HEAD` + the plan.
-> Plan: `~/.claude/plans/generic-sauteeing-willow.md`
+> Canonical handoff. Source of truth = git history + `CLAUDE.md`.
+> To resume in a new session: read this file + `CLAUDE.md` + `git log origin/main..HEAD`.
 
-_Last updated: 2026-06-10 · branch `claude/musing-meninsky-d95614` · latest commit `503c5de`_
+_Last updated: 2026-06-11._
+
+## Status: v2 (managed AI + credits) SHIPPED — merged to `main` via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+
+### v2 — Phase 8: managed AI + credits (DONE)
+- Credit ledger (append-only `credit_ledger` + spendable `credit_buckets` + versioned `pricing_config`); atomic oversell-safe plpgsql; reserve→settle→refund w/ idempotency. Applied to prod Supabase `xyhkklqnbxoucnjlckaz`.
+- Managed AI chatbox, **multi-provider**: `gpt-*` → OpenAI, else Anthropic. **Free tier = `gpt-5-mini` only**; all Claude models Pro-gated (Claude vendor cost only fires for paying users).
+- Managed Deepgram transcription via temp-token JWTs (BYO free OR managed credits).
+- Dodo: Pro $9/mo monthly grant + PWYW one-time top-ups; webhook grants gated on `payment.succeeded`, idempotent.
+- Pricing: `1 cr = $0.01`, `credits = max(min_charge, ceil(vendor_usd × 3 × 100))`. Conservative defaults (markup 3, min_charge 1, monthly_grant 1000, free_grant 50) — tune from real burn data in `pricing_config`.
+- Vercel keys set: `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`. **Anthropic account not yet funded** → Claude fails gracefully (refund + "AI request failed"); GPT-5 mini works.
+- Reviews closed: superpowers (C1 OpenAI no-usage settle) + Codex (P1 seed gpt-5-mini, P1 gate top-up on payment success). Backend + extension tsc 0 errors.
+
+### Build fix (2026-06-11)
+- `@crxjs/vite-plugin` `2.0.0-beta.28` hung `vite build` indefinitely → upgraded to **2.5.0**; deduped rollup inputs (sidepanel/options come from the manifest); disabled sourcemaps. Build now completes (~75s). Note: `transforming (1) @crx/manifest` line is static in crx mode — not a hang.
+
+### Outstanding (user actions, not code)
+- Fund Anthropic account → Claude models go live for Pro users.
+- One live test-mode Dodo top-up before promoting.
+
+---
+
+## v1 (shipped earlier — [PR #3](https://github.com/Mohammad2460/twilio-dialpad/pull/3))
 
 ## Status: v1 COMPLETE — session closed. Working tree clean, branch in sync, CI green.
 
