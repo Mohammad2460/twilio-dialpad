@@ -14,7 +14,9 @@ import { SettingsTab } from './components/SettingsTab';
 import { ProTab } from './components/ProTab';
 import { AiTab } from './components/AiTab';
 import { SmsTab } from './components/SmsTab';
-import { EmailCaptureSheet } from './components/EmailCaptureSheet';
+import { TrialStartPopup } from './components/TrialStartPopup';
+import { TrialBanner } from './components/TrialBanner';
+import { getEntitlements, type Entitlements } from '@shared/entitlements';
 
 export function App() {
   useDevice();
@@ -22,8 +24,8 @@ export function App() {
   const activeCall = useCallStore((s) => s.activeCall);
   const view = useCallStore((s) => s.view);
 
-  // null = loading; true = show capture sheet; false = hide
-  const [showEmailCapture, setShowEmailCapture] = useState<boolean | null>(null);
+  const [ent, setEnt] = useState<Entitlements | null>(null);
+  const [cloudUserId, setCloudUserId] = useState<string | null>(null);
 
   // Telemetry: the side panel mounting = the user opened the dialpad. Fire once
   // per mount (empty deps) — separates "installed, never opened" from "bailed".
@@ -31,31 +33,35 @@ export function App() {
     track('panel_opened');
   }, []);
 
-  // Check whether to show email capture once settings are confirmed configured
+  // Resolve entitlements (drives the trial popup + expiry banner) once configured.
   useEffect(() => {
     if (!settings) return;
-    // Only evaluate once — guard against re-runs if settings re-emits mid-session
-    if (showEmailCapture !== null) return;
-    chrome.storage.local
-      .get(['emailCaptured', 'emailPromptSkipped'])
-      .then(({ emailCaptured, emailPromptSkipped }) => {
-        setShowEmailCapture(!emailCaptured && !emailPromptSkipped);
-      })
-      .catch(() => setShowEmailCapture(false));
+    let cancelled = false;
+    (async () => {
+      const { cloudUserId: uid } = await chrome.storage.local.get('cloudUserId');
+      const userId = typeof uid === 'string' ? uid : null;
+      const result = await getEntitlements(userId);
+      if (!cancelled) {
+        setCloudUserId(userId);
+        setEnt(result);
+      }
+    })().catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
   }, [settings]);
 
   if (!settings) return <NotConfigured />;
+
+  const showTrialBanner = ent?.trialing && ent.daysLeft != null && ent.daysLeft <= 3 && cloudUserId;
 
   return (
     <div className="flex h-full flex-col bg-white">
       <StatusBar />
       <FolderPermissionBanner />
+      <TrialStartPopup />
+      {showTrialBanner && <TrialBanner userId={cloudUserId} daysLeft={ent.daysLeft!} />}
       <main className="flex-1 overflow-y-auto">
-        {showEmailCapture && (
-          <div className="p-3">
-            <EmailCaptureSheet onDone={() => setShowEmailCapture(false)} />
-          </div>
-        )}
         {activeCall?.phase === 'ringing' && activeCall.direction === 'in' ? (
           <IncomingCall />
         ) : activeCall ? (
