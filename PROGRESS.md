@@ -5,7 +5,31 @@
 
 _Last updated: 2026-06-11._
 
-## Status: Batch 1 UX overhaul + monetization SHIPPED — merged to `main` via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6). v2 (managed AI + credits) shipped earlier via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4). Next: batch 2 (new session).
+## Status: Batch 2 onboarding overhaul SHIPPED — merged to `main` via [PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8). Prod Supabase migration applied; Vercel auto-deploys on merge. Batch 1 via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6); v2 via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+
+### Batch 2 — onboarding overhaul ([PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8), SHIPPED)
+_Spec: `docs/superpowers/specs/2026-06-11-onboarding-overhaul-design.md` · Plan: `docs/superpowers/plans/2026-06-11-onboarding-overhaul.md`._
+
+What changed (all typechecks 0 errors; 34 ext + 11 backend tests pass; `npx vite build` ✓):
+- **Instant setup (wizard killed).** Per-user Twilio Serverless build/deploy (~60-90s) removed for NEW installs. Voice now backend-hosted: `/api/voice/token/[userId]` (mints AccessToken from stored API key secret, device-auth) + `/api/voice/twiml/[userId]` (TwiML webhook, capability-secret in URL). Provisioning folds into `/api/devices/register` (`provision:true`): create API key → store secret **encrypted** (AES-256-GCM) → create TwiML app (VoiceUrl→backend) → wire number Voice+SMS. Setup is now ~3-5s, single call. **Auth Token still never persisted.**
+- **Existing users unaffected** — they keep their deployed Functions (`backend_voice=false`); every modified route branches on `backend_voice` and preserves the legacy Function path. No forced migration.
+- **Mandatory email at setup** (no Skip, no 6-digit verify). Captured in the register call → `email` + `product_email_consent_at`. `EmailCaptureSheet` + soft-prompt removed. Marketing checkbox stays optional/default-OFF.
+- **Light trial.** Trial no longer unlocks all Pro. New `user_is_paid` SQL gates SMS/recording/Claude (paid only); `user_is_trialing` makes managed transcription FREE during trial (no credit debit in `/api/transcribe/token`+`settle`). gpt-5-mini stays free. Client `entitlements.ts` split into `paid` vs `trialing` + new `managed_transcription` feature.
+- **Trial-start popup** (one-time, `trialPopupSeen`) + **expiry banner** (last 3 days, `daysLeft<=3`) with Upgrade → Dodo checkout.
+- **SMS send / recording media+delete / inbound SMS** moved to backend for backend-voice users (use stored API key; inbound SMS accepts `?u`/`?k` capability auth alongside legacy body `secret`).
+- **Fixed `npm test`** (broken by the crx 2.5.0 upgrade): dedicated `vitest.config.ts` (no crx plugin, `node` env — happy-dom hung vitest 2.x).
+
+**DONE:**
+- [x] Prod Supabase migration `scripts/migration-backend-voice.sql` applied + verified (11 cols, `user_is_paid`/`user_is_trialing`; `user_has_access` preserved).
+- [x] Backend deployed to Vercel via merge (git-integration auto-deploy of `main`).
+- [x] Code review: 1 Important finding (SSRF/credential-leak in recording ingest — API-key secret could be exfiltrated by a forged callback) fixed by pinning the download host to `*.twilio.com`.
+
+**OUTSTANDING (user action):**
+- [ ] Manual e2e on prod: fresh install → setup in seconds → first call connects → trial popup → (simulate `trial_ends_at` ~2d) banner → checkout. Verify the TwiML App VoiceUrl = `…/api/voice/twiml/<uid>?k=…` and the number's Voice = that app.
+- [ ] Existing trial users now lose SMS/recording/Claude (light-trial gating) + gain free managed transcription — expected; watch for confusion.
+- [ ] `pnpm build` uses bare `tsc` (fails in worktree PATH); `npx tsc --noEmit && npx vite build` works. Non-blocking cleanup.
+
+### Batch 1 status (shipped)
 
 ### v2 — Phase 8: managed AI + credits (DONE)
 - Credit ledger (append-only `credit_ledger` + spendable `credit_buckets` + versioned `pricing_config`); atomic oversell-safe plpgsql; reserve→settle→refund w/ idempotency. Applied to prod Supabase `xyhkklqnbxoucnjlckaz`.

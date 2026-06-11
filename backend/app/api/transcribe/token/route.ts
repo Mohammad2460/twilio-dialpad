@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/lib/cors';
 import { authenticate } from '@/lib/auth';
+import { supabase } from '@/lib/supabase';
 import { mintDeepgramToken } from '@/lib/deepgram-token';
 import {
   getActivePricing,
@@ -55,6 +56,9 @@ export async function POST(req: NextRequest) {
 
   if (!process.env.DEEPGRAM_API_KEY) return j({ error: 'managed_transcription_unavailable' }, 503);
 
+  // Managed transcription is FREE during the 7-day trial (no credit reserve/debit).
+  const { data: trialing } = await supabase.rpc('user_is_trialing', { uid: userId });
+
   let body: TokenBody;
   try {
     body = (await req.json()) as TokenBody;
@@ -82,18 +86,20 @@ export async function POST(req: NextRequest) {
   // ── Reserve the next window.
   const estCredits = estimateTranscriptionCredits(WINDOW_SECONDS / 60, model, pricing);
   const idemKey = body.windowKey ?? crypto.randomUUID();
-  let requestId: string;
-  try {
-    requestId = await reserve(userId, estCredits, idemKey, `deepgram:${model}`, pricing.version);
-  } catch (e) {
-    if (e instanceof InsufficientCreditsError) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
-      return j(
-        { error: 'insufficient_credits', need: estCredits, topUpUrl: `${baseUrl}/api/checkout/${userId}` },
-        402,
-      );
+  let requestId = '';
+  if (!trialing) {
+    try {
+      requestId = await reserve(userId, estCredits, idemKey, `deepgram:${model}`, pricing.version);
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
+        return j(
+          { error: 'insufficient_credits', need: estCredits, topUpUrl: `${baseUrl}/api/checkout/${userId}` },
+          402,
+        );
+      }
+      throw e;
     }
-    throw e;
   }
 
   // ── Mint the token; refund the reservation if Deepgram is unreachable.

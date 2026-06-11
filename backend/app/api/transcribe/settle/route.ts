@@ -37,7 +37,8 @@ export async function POST(req: NextRequest) {
   const requestId = typeof body.requestId === 'string' ? body.requestId : '';
   const seconds = typeof body.seconds === 'number' && body.seconds >= 0 ? body.seconds : 0;
   const model = typeof body.model === 'string' ? body.model : 'nova-3';
-  if (!requestId) return j({ error: 'missing_request' }, 400);
+  // Trial windows carry no reservation (transcription is free during trial) → no-op.
+  if (!requestId) return j({ ok: true, skipped: true });
 
   const pricing = await getActivePricing();
   if (!pricing.deepgram[model]) return j({ error: 'unknown_model' }, 400);

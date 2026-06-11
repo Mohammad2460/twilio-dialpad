@@ -26,15 +26,81 @@ function normNumber(raw: string): string {
   return t.startsWith('+') ? t : `+${t.replace(/^\+?/, '')}`;
 }
 
+/** Store the inbound message + honor STOP/START. Shared by both auth paths. */
+async function processInbound(
+  userId: string,
+  from: string,
+  to: string,
+  text: string,
+  messageSid: string | null,
+): Promise<boolean> {
+  const keyword = text.trim().toUpperCase();
+  const peer = normNumber(from);
+  if (STOP_KEYWORDS.has(keyword)) {
+    await supabase
+      .from('sms_opt_outs')
+      .upsert({ user_id: userId, number: peer }, { onConflict: 'user_id,number' });
+  } else if (START_KEYWORDS.has(keyword)) {
+    await supabase.from('sms_opt_outs').delete().eq('user_id', userId).eq('number', peer);
+  }
+
+  const { error } = await supabase.from('messages').upsert(
+    {
+      user_id: userId,
+      direction: 'in',
+      from_number: from,
+      to_number: to,
+      body: text,
+      status: 'received',
+      twilio_message_sid: messageSid,
+      thread_key: peer,
+    },
+    { onConflict: 'twilio_message_sid' },
+  );
+  if (error) {
+    console.error('[sms/inbound] store failed', error);
+    return false;
+  }
+  return true;
+}
+
+const EMPTY_TWIML = '<?xml version="1.0" encoding="UTF-8"?><Response></Response>';
+
 /**
- * POST /api/sms/inbound — called by the user's Twilio `/incoming-sms` Function
- * (which is Protected, so Twilio already validated the X-Twilio-Signature).
- * Auth here = the shared configSecret, verified against the user's stored
- * (encrypted) configSecret resolved by Account SID. Idempotent on MessageSid.
+ * POST /api/sms/inbound
  *
- * Body: { accountSid, from, to, body, messageSid, secret }
+ * Two callers:
+ *  - Backend-voice (new): the number's SmsUrl points here directly as
+ *    `?u=<userId>&k=<capabilitySecret>`. Twilio POSTs form-urlencoded
+ *    (From/To/Body/MessageSid). We validate `?k` and reply with empty TwiML.
+ *  - Legacy: the user's Protected `/incoming-sms` Function forwards JSON
+ *    { accountSid, from, to, body, messageSid, secret }, auth via stored
+ *    configSecret resolved by Account SID. Idempotent on MessageSid.
  */
 export async function POST(req: NextRequest) {
+  const uParam = req.nextUrl.searchParams.get('u');
+  const kParam = req.nextUrl.searchParams.get('k');
+
+  // ── Backend-voice path: direct Twilio webhook, form-urlencoded, ?u/?k auth.
+  if (uParam && kParam) {
+    const { data: u } = await supabase
+      .from('users')
+      .select('voice_capability_secret, backend_voice')
+      .eq('id', uParam)
+      .single();
+    if (!u || !u.backend_voice || !u.voice_capability_secret || !eq(kParam, u.voice_capability_secret)) {
+      return new NextResponse(EMPTY_TWIML, { status: 401, headers: { 'Content-Type': 'text/xml' } });
+    }
+    const form = await req.formData();
+    const from = (form.get('From') ?? '').toString();
+    const to = (form.get('To') ?? '').toString();
+    const text = (form.get('Body') ?? '').toString();
+    const messageSid = ((form.get('MessageSid') ?? form.get('SmsSid')) ?? '').toString() || null;
+    if (from && to) await processInbound(uParam, from, to, text, messageSid);
+    return new NextResponse(EMPTY_TWIML, { status: 200, headers: { 'Content-Type': 'text/xml' } });
+  }
+
+  // ── Legacy Function path (JSON body).
   let p: {
     accountSid?: unknown;
     from?: unknown;
@@ -64,40 +130,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401, headers: corsHeaders });
   }
 
-  // Compliance: honor STOP / START on the sender's number. The send path
-  // (POST /api/sms/[userId]) refuses to text any number with an opt-out row.
-  const keyword = text.trim().toUpperCase();
-  const peer = normNumber(from);
-  if (STOP_KEYWORDS.has(keyword)) {
-    await supabase
-      .from('sms_opt_outs')
-      .upsert({ user_id: resolved.userId, number: peer }, { onConflict: 'user_id,number' });
-  } else if (START_KEYWORDS.has(keyword)) {
-    await supabase
-      .from('sms_opt_outs')
-      .delete()
-      .eq('user_id', resolved.userId)
-      .eq('number', peer);
-  }
-
-  // Store inbound (idempotent on MessageSid). thread_key = the remote sender.
-  const { error } = await supabase.from('messages').upsert(
-    {
-      user_id: resolved.userId,
-      direction: 'in',
-      from_number: from,
-      to_number: to,
-      body: text,
-      status: 'received',
-      twilio_message_sid: messageSid,
-      thread_key: peer,
-    },
-    { onConflict: 'twilio_message_sid' },
-  );
-  if (error) {
-    console.error('[sms/inbound] store failed', error);
+  if (!(await processInbound(resolved.userId, from, to, text, messageSid))) {
     return NextResponse.json({ error: 'store_failed' }, { status: 500, headers: corsHeaders });
   }
-
   return NextResponse.json({ ok: true }, { headers: corsHeaders });
 }

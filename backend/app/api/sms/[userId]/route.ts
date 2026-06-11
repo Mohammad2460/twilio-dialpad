@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
 import { authenticateUser } from '@/lib/auth';
 import { getFunctionForUser, ConfigDecryptError } from '@/lib/device-functions';
+import { sendSms } from '@/lib/twilio-server';
+import { decryptSecret } from '@/lib/crypto';
 
 export const runtime = 'nodejs';
 
@@ -14,9 +16,9 @@ function j(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: corsHeaders });
 }
 
-/** Pro gate — mirror the calls route. */
+/** Paid gate — SMS is a paid feature, NOT included in the trial. */
 async function requireAccess(userId: string): Promise<boolean> {
-  const { data } = await supabase.rpc('user_has_access', { uid: userId });
+  const { data } = await supabase.rpc('user_is_paid', { uid: userId });
   return !!data;
 }
 
@@ -82,34 +84,67 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
     .maybeSingle();
   if (optOut) return j({ error: 'recipient_opted_out' }, 403);
 
-  let fn;
-  try {
-    fn = await getFunctionForUser(userId);
-  } catch (e) {
-    if (e instanceof ConfigDecryptError) return j({ error: 'config_error' }, 500);
-    throw e;
-  }
-  if (!fn) return j({ error: 'messaging_not_provisioned' }, 409);
+  // Resolve the send path: backend-voice users send inline via stored API key;
+  // legacy users send through their deployed Twilio Function.
+  const { data: vc } = await supabase
+    .from('users')
+    .select('backend_voice, api_key_sid, api_key_secret_enc, twilio_account_sid, caller_id')
+    .eq('id', userId)
+    .single();
 
-  // Call the user's Twilio Function /sms (it sends via Messages API with API-Key creds).
-  let sendRes: Response;
-  try {
-    sendRes = await fetch(`${fn.functionUrl}/sms`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ secret: fn.configSecret, To: to, Body: text }),
-    });
-  } catch {
-    return j({ error: 'function_unreachable' }, 502);
-  }
-  const result = (await sendRes.json().catch(() => ({}))) as {
-    ok?: boolean;
-    sid?: string;
-    from?: string;
-    error?: string;
-  };
-  if (!sendRes.ok || !result.ok) {
-    return j({ error: 'send_failed', detail: result.error ?? `status ${sendRes.status}` }, 502);
+  let sentSid: string | null = null;
+  let sentFrom = '';
+
+  if (vc?.backend_voice) {
+    if (!vc.api_key_sid || !vc.api_key_secret_enc || !vc.twilio_account_sid || !vc.caller_id) {
+      return j({ error: 'messaging_not_provisioned' }, 409);
+    }
+    try {
+      const r = await sendSms(
+        vc.api_key_sid,
+        decryptSecret(vc.api_key_secret_enc),
+        vc.twilio_account_sid,
+        to,
+        vc.caller_id,
+        text,
+      );
+      sentSid = r.sid;
+      sentFrom = vc.caller_id;
+    } catch (e) {
+      return j({ error: 'send_failed', detail: e instanceof Error ? e.message.slice(0, 120) : 'error' }, 502);
+    }
+  } else {
+    let fn;
+    try {
+      fn = await getFunctionForUser(userId);
+    } catch (e) {
+      if (e instanceof ConfigDecryptError) return j({ error: 'config_error' }, 500);
+      throw e;
+    }
+    if (!fn) return j({ error: 'messaging_not_provisioned' }, 409);
+
+    // Call the user's Twilio Function /sms (it sends via Messages API with API-Key creds).
+    let sendRes: Response;
+    try {
+      sendRes = await fetch(`${fn.functionUrl}/sms`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: fn.configSecret, To: to, Body: text }),
+      });
+    } catch {
+      return j({ error: 'function_unreachable' }, 502);
+    }
+    const result = (await sendRes.json().catch(() => ({}))) as {
+      ok?: boolean;
+      sid?: string;
+      from?: string;
+      error?: string;
+    };
+    if (!sendRes.ok || !result.ok) {
+      return j({ error: 'send_failed', detail: result.error ?? `status ${sendRes.status}` }, 502);
+    }
+    sentSid = result.sid ?? null;
+    sentFrom = result.from ?? '';
   }
 
   // Record outbound (idempotent on sid).
@@ -117,15 +152,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ use
     {
       user_id: userId,
       direction: 'out',
-      from_number: result.from ?? '',
+      from_number: sentFrom,
       to_number: to,
       body: text,
       status: 'sent',
-      twilio_message_sid: result.sid ?? null,
+      twilio_message_sid: sentSid,
       thread_key: to,
     },
     { onConflict: 'twilio_message_sid' },
   );
 
-  return j({ ok: true, sid: result.sid });
+  return j({ ok: true, sid: sentSid });
 }
