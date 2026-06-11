@@ -10,16 +10,23 @@ import { getSubscription, type Subscription } from './cloud';
 
 export type Tier = 'free' | 'pro';
 
-/** Pro-only capabilities (free tier: calling, redial, 20-call history, BYO-key
- *  live transcript, talk-ratio, auto-dial capped 15/day, HubSpot pop). */
+/**
+ * Capabilities.
+ * - Free tier: calling, redial, 20-call history, BYO-key live transcript,
+ *   talk-ratio, auto-dial capped 15/day, HubSpot pop, gpt-5-mini chat.
+ * - Trial (7d): adds `managed_transcription` (free, no credits).
+ * - Paid only: everything else below.
+ */
 export type Feature =
+  | 'managed_transcription'
   | 'autodial_unlimited'
   | 'ai_analysis'
   | 'cloud_history'
   | 'sms'
   | 'recording';
 
-const PRO_FEATURES: readonly Feature[] = [
+/** Features that require a PAID subscription (NOT unlocked by the trial). */
+const PAID_FEATURES: readonly Feature[] = [
   'autodial_unlimited',
   'ai_analysis',
   'cloud_history',
@@ -30,6 +37,8 @@ const PRO_FEATURES: readonly Feature[] = [
 export interface Entitlements {
   tier: Tier;
   isPro: boolean;
+  /** True only for a real paid subscription (active/past_due/cancelled-in-period). */
+  paid: boolean;
   trialing: boolean;
   daysLeft?: number;
   fromCache: boolean;
@@ -47,15 +56,20 @@ interface Cached {
 }
 
 function build(sub: Subscription | null, fromCache: boolean, stale: boolean): Entitlements {
-  const isPro = !!sub?.hasAccess; // trial-with-access counts as Pro (trial unlocks all)
+  const trialing = sub?.status === 'trialing' && !!sub?.hasAccess;
+  // Paid = elevated access that is NOT the trial (mirrors backend user_is_paid).
+  const paid = !!sub?.hasAccess && sub.status !== 'trialing';
+  const isPro = paid || trialing; // "has elevated access" — for display only
   return {
     tier: isPro ? 'pro' : 'free',
     isPro,
-    trialing: sub?.status === 'trialing' && !!sub?.hasAccess,
+    paid,
+    trialing,
     daysLeft: sub?.daysLeft,
     fromCache,
     stale,
-    can: (f) => isPro && PRO_FEATURES.includes(f),
+    // Trial unlocks managed transcription only; all other features require paid.
+    can: (f) => (f === 'managed_transcription' ? paid || trialing : paid && PAID_FEATURES.includes(f)),
   };
 }
 

@@ -8,6 +8,7 @@ import {
 import { useCallStore } from '../stores/call-store';
 
 const BENEFIT: Record<Feature, string> = {
+  managed_transcription: 'Auto-transcribe every call — no setup',
   autodial_unlimited: 'Hit your 80-call daily target',
   ai_analysis: "Know exactly why you're not booking meetings",
   cloud_history: "Never lose a prospect's exact words",
