@@ -13,7 +13,6 @@ import { FolderPermissionBanner } from './components/FolderPermissionBanner';
 import { SettingsTab } from './components/SettingsTab';
 import { ProTab } from './components/ProTab';
 import { AiTab } from './components/AiTab';
-import { SmsTab } from './components/SmsTab';
 import { TrialStartPopup } from './components/TrialStartPopup';
 import { TrialBanner } from './components/TrialBanner';
 import { getEntitlements, type Entitlements } from '@shared/entitlements';
@@ -68,8 +67,6 @@ export function App() {
           <CallScreen />
         ) : view === 'history' ? (
           <CallHistory />
-        ) : view === 'sms' ? (
-          <SmsTab />
         ) : view === 'autodial' ? (
           <AutoDialer />
         ) : view === 'settings' ? (
@@ -99,9 +96,6 @@ function Footer() {
       </TabButton>
       <TabButton active={view === 'ai'} onClick={() => setView('ai')}>
         AI
-      </TabButton>
-      <TabButton active={view === 'sms'} onClick={() => setView('sms')}>
-        SMS
       </TabButton>
       <TabButton active={view === 'history'} onClick={() => setView('history')}>
         Recents
