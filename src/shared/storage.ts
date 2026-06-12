@@ -3,12 +3,18 @@ import type { CallRecord, DialerQueueItem, Settings } from './types';
 
 const SettingsSchema = z.object({
   accountSid: z.string().regex(/^AC[a-zA-Z0-9]{32}$/),
-  apiKeySid: z.string().regex(/^SK[a-zA-Z0-9]{32}$/),
-  twimlAppSid: z.string().regex(/^AP[a-zA-Z0-9]{32}$/),
-  functionUrl: z.string().url(),
+  // Legacy (per-user Twilio Function) installs carry real values here; backend-voice
+  // installs leave them empty ('') since the API key / TwiML app / webhook live
+  // server-side. Accept either: valid format OR empty string.
+  apiKeySid: z.string().regex(/^SK[a-zA-Z0-9]{32}$/).or(z.literal('')),
+  twimlAppSid: z.string().regex(/^AP[a-zA-Z0-9]{32}$/).or(z.literal('')),
+  functionUrl: z.string().url().or(z.literal('')),
   clientIdentity: z.string().min(1).max(121),
   defaultCallerId: z.string().min(1),
   configuredAt: z.number(),
+
+  /** True for installs provisioned on the backend (no per-user Twilio Function). */
+  backendVoice: z.boolean().optional(),
 
   // V1.1 optional fields — never required so existing V0 installs still parse.
   serviceSid: z.string().regex(/^ZS[a-zA-Z0-9]{32}$/).optional(),

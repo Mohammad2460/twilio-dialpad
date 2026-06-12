@@ -49,6 +49,25 @@ describe('storage', () => {
     expect(got).toEqual(s);
   });
 
+  it('round-trips backend-voice settings (empty legacy SIDs/url + backendVoice flag)', async () => {
+    const { storage } = await import('../../src/shared/storage');
+    const s = {
+      accountSid: 'AC' + 'a'.repeat(32),
+      apiKeySid: '',        // owned server-side now
+      twimlAppSid: '',      // owned server-side now
+      functionUrl: '',      // unused for backend-voice
+      clientIdentity: 'dialpad',
+      defaultCallerId: '+14155551234',
+      configuredAt: 123,
+      backendVoice: true,
+    };
+    await storage.setSettings(s);             // must NOT throw
+    const got = await storage.getSettings();
+    expect(got).not.toBeNull();
+    expect(got!.backendVoice).toBe(true);     // must survive parse (not stripped)
+    expect(got).toEqual(s);
+  });
+
   it('returns null when no settings', async () => {
     const { storage } = await import('../../src/shared/storage');
     expect(await storage.getSettings()).toBeNull();
