@@ -72,7 +72,7 @@ server.registerTool(
       .slice(0, limit);
     const text = filtered.length === 0
       ? `No calls found in ${folder}.`
-      : filtered.map((e) => `${formatTimestamp(e.startedAt)} ${e.direction === 'in' ? '←' : '→'} ${e.number} (${formatDuration(e.durationSec)}, ${e.status}${e.hasTranscript ? ', transcript' : ''})`).join('\n');
+      : filtered.map((e) => `${e.sid}  ${formatTimestamp(e.startedAt)} ${e.direction === 'in' ? '←' : '→'} ${e.number} (${formatDuration(e.durationSec)}, ${e.status}${e.hasTranscript ? ', transcript' : ''})`).join('\n');
     return {
       content: [{ type: 'text', text }],
       structuredContent: { calls: filtered },

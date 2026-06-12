@@ -85,7 +85,7 @@ export function buildMcpTools(store: DBCallStore): McpTool[] {
         const text = filtered.length === 0
           ? 'No calls found.'
           : filtered.map((e) =>
-              `${fmt(e.startedAt)} ${e.direction === 'in' ? '←' : '→'} ${e.number} (${dur(e.durationSec)}, ${e.status}${e.hasTranscript ? ', transcript' : ''})`
+              `${e.sid}  ${fmt(e.startedAt)} ${e.direction === 'in' ? '←' : '→'} ${e.number} (${dur(e.durationSec)}, ${e.status}${e.hasTranscript ? ', transcript' : ''})`
             ).join('\n');
 
         return { content: [{ type: 'text', text }], structuredContent: { calls: filtered } };
