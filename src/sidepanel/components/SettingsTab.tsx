@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCallStore } from '../stores/call-store';
 import { storage } from '@shared/storage';
 import type { Settings } from '@shared/types';
-import { maskSid, provisionMessagingAddon } from '@shared/twilio-rest';
+import { maskSid } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount, isDeviceRegistered, registerDevice } from '@shared/cloud';
 import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
@@ -36,7 +36,6 @@ export function SettingsTab() {
       <SecureDeviceSection settings={settings} />
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
       <AISection settings={settings} onUpdate={update} />
-      <EnableSmsSection settings={settings} onUpdate={update} />
       <RecordingsSection settings={settings} onUpdate={update} />
       <ExtensionPrefsSection settings={settings} onUpdate={update} />
       <AccountSection settings={settings} />
@@ -105,49 +104,98 @@ function CallSettingsSection({
   onUpdate: (s: Settings) => void;
 }) {
   const [incoming, setIncoming] = useState(settings.incomingEnabled ?? true);
+  const [forwardOn, setForwardOn] = useState(settings.forwardEnabled ?? false);
+  const [forwardNum, setForwardNum] = useState(settings.forwardNumber ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const canConfig = !!(settings.serviceSid && settings.environmentSid && settings.configSecret);
+  const [saved, setSaved] = useState(false);
+  // Backend-voice installs manage routing server-side (no Function SIDs).
+  const canConfig = !!(
+    settings.backendVoice ||
+    (settings.serviceSid && settings.environmentSid && settings.configSecret)
+  );
 
-  async function toggleIncoming(v: boolean) {
-    setIncoming(v);
+  async function apply(patch: { incomingEnabled?: boolean; forwardEnabled?: boolean; forwardNumber?: string }) {
     setBusy(true);
     setErr(null);
+    setSaved(false);
     try {
-      await pushConfig(settings, { incomingEnabled: v });
-      const next = await storage.updateSettings({ incomingEnabled: v });
+      await pushConfig(settings, patch);
+      const next = await storage.updateSettings(patch);
       if (next) onUpdate(next);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
     } catch (e) {
-      setIncoming(!v); // revert
       setErr(e instanceof Error ? e.message : String(e));
+      // Re-sync local toggles to persisted truth on failure.
+      setIncoming(settings.incomingEnabled ?? true);
+      setForwardOn(settings.forwardEnabled ?? false);
+      setForwardNum(settings.forwardNumber ?? '');
     } finally {
       setBusy(false);
     }
   }
 
+  async function toggleIncoming(v: boolean) {
+    setIncoming(v);
+    await apply({ incomingEnabled: v });
+  }
+
+  async function toggleForward(v: boolean) {
+    if (v && !/^\+\d{6,15}$/.test(forwardNum.trim())) {
+      setErr('Enter a valid forwarding number (E.164, e.g. +14155551234) first.');
+      return;
+    }
+    setForwardOn(v);
+    await apply({ forwardEnabled: v });
+  }
+
+  async function saveForwardNumber() {
+    const n = forwardNum.trim();
+    if (n !== '' && !/^\+\d{6,15}$/.test(n)) {
+      setErr('Forwarding number must be E.164, e.g. +14155551234.');
+      return;
+    }
+    await apply({ forwardNumber: n });
+  }
+
+  if (!canConfig) {
+    return (
+      <Section title="Calls">
+        <p className="text-xs text-gray-500">Re-run setup to manage incoming-call routing here.</p>
+      </Section>
+    );
+  }
+
   return (
     <Section title="Calls">
-      {canConfig ? (
-        <Toggle
-          label="Receive incoming calls"
-          description="Ring this browser when someone calls your Twilio number."
-          checked={incoming}
-          onChange={toggleIncoming}
+      <Toggle
+        label="Receive incoming calls"
+        description="Ring this browser when someone calls your Twilio number."
+        checked={incoming}
+        onChange={toggleIncoming}
+      />
+      <Toggle
+        label="Forward calls to another number"
+        description="Ring an external number (e.g. your mobile) instead of / alongside this browser."
+        checked={forwardOn}
+        onChange={toggleForward}
+      />
+      <div className="space-y-1">
+        <input
+          type="tel"
+          inputMode="tel"
+          placeholder="+14155551234"
+          value={forwardNum}
+          onChange={(e) => setForwardNum(e.target.value)}
+          onBlur={saveForwardNumber}
+          className="w-full rounded-md border border-gray-300 px-2 py-1.5 text-sm"
         />
-      ) : (
-        <p className="text-xs text-gray-500">
-          Re-run setup to manage incoming-call routing here.
-        </p>
-      )}
+        <p className="text-xs text-gray-400">Forwarding destination (E.164 format).</p>
+      </div>
       {busy && <p className="text-xs text-gray-400">Saving…</p>}
+      {saved && <p className="text-xs text-green-600">✓ Saved</p>}
       {err && <p className="text-xs text-red-600 break-all">{err}</p>}
-      <button
-        type="button"
-        onClick={() => chrome.runtime.openOptionsPage()}
-        className="text-xs font-medium text-brand-600 hover:underline"
-      >
-        Advanced call settings (forwarding, voicemail) →
-      </button>
     </Section>
   );
 }
@@ -386,71 +434,6 @@ function SecureDeviceSection({ settings }: { settings: Settings }) {
   );
 }
 
-function EnableSmsSection({
-  settings,
-  onUpdate,
-}: {
-  settings: Settings;
-  onUpdate: (p: Partial<Settings>) => Promise<void>;
-}) {
-  const [status, setStatus] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const canProvision = !!(settings.serviceSid && settings.environmentSid && settings.functionUrl);
-
-  async function enable() {
-    if (!canProvision) {
-      setStatus('SMS needs a full re-run of setup (open Full settings → Reconfigure).');
-      return;
-    }
-    const token = window.prompt(
-      'Enter your Twilio Auth Token once to enable SMS.\nIt is used only to deploy the messaging function and is never stored.',
-    );
-    if (!token || !token.trim()) return;
-    setBusy(true);
-    setStatus('Deploying SMS…');
-    try {
-      await provisionMessagingAddon(
-        settings.accountSid,
-        token.trim(),
-        {
-          serviceSid: settings.serviceSid as string,
-          environmentSid: settings.environmentSid as string,
-          functionUrl: settings.functionUrl,
-          callerId: settings.defaultCallerId,
-        },
-        (s) => setStatus(`Deploying SMS — ${s}…`),
-      );
-      // Marks SMS + recording-status (+ delete-recording) Functions deployed and
-      // RECORDING_CALLBACK set — gates the call-recording toggle.
-      await onUpdate({ messagingProvisioned: true });
-      setStatus('✓ SMS & recording enabled. Text prospects from the SMS tab.');
-    } catch (e) {
-      setStatus('Failed: ' + (e instanceof Error ? e.message : String(e)));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Section title="SMS (Pro)">
-      <p className="text-xs text-gray-500">
-        Send & receive texts from the SMS tab. This deploys a messaging function to your own Twilio
-        account and points your number's inbound webhook at it. US senders must register their
-        number for A2P 10DLC in Twilio.
-      </p>
-      <button
-        type="button"
-        onClick={enable}
-        disabled={busy}
-        className="rounded-md bg-brand-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-700 disabled:opacity-50"
-      >
-        {busy ? 'Working…' : 'Enable SMS'}
-      </button>
-      {status && <p className="text-xs text-gray-600 break-words">{status}</p>}
-    </Section>
-  );
-}
-
 function RecordingsSection({
   settings,
   onUpdate,
@@ -462,14 +445,17 @@ function RecordingsSection({
   const [userId, setUserId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const recordOn = settings.recordOutgoing ?? false;
-  // Recording needs the /recording-status callback Function, which only the SMS
-  // add-on deploys — NOT the first-run autoProvisionAll. Without it Twilio would
-  // record calls with nowhere to send the media, so gate on messagingProvisioned.
+  // Backend-voice installs ingest recordings server-side (the /api/voice/twiml
+  // route sets recordingStatusCallback → /api/recordings/ingest), so no per-user
+  // Function is needed. Legacy installs still require the SMS add-on, which
+  // deploys the /recording-status callback Function + sets RECORDING_CALLBACK —
+  // without it Twilio would record with nowhere to send the media.
   const canConfig = !!(
-    settings.serviceSid &&
-    settings.environmentSid &&
-    settings.configSecret &&
-    settings.messagingProvisioned
+    settings.backendVoice ||
+    (settings.serviceSid &&
+      settings.environmentSid &&
+      settings.configSecret &&
+      settings.messagingProvisioned)
   );
 
   useEffect(() => {
@@ -521,7 +507,7 @@ function RecordingsSection({
               onChange={toggle}
             />
           ) : (
-            <p className="text-xs text-gray-500">Run “Enable SMS” first — it also provisions call recording.</p>
+            <p className="text-xs text-gray-500">Re-run setup to enable call recording.</p>
           )}
           {busy && <p className="text-xs text-gray-400">Saving…</p>}
           <div className="space-y-2">

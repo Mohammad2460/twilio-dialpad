@@ -3,9 +3,25 @@
 > Canonical handoff. Source of truth = git history + `CLAUDE.md`.
 > To resume in a new session: read this file + `CLAUDE.md` + `git log origin/main..HEAD`.
 
-_Last updated: 2026-06-11._
+_Last updated: 2026-06-12._
 
-## Status: Batch 2 onboarding overhaul SHIPPED — merged to `main` via [PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8). Prod Supabase migration applied; Vercel auto-deploys on merge. Batch 1 via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6); v2 via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+## Status: Batch 2 onboarding overhaul SHIPPED ([PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8)). Post-overhaul fixes + cleanup via [PR #9](https://github.com/Mohammad2460/twilio-dialpad/pull/9). Prod Supabase migration applied; Vercel auto-deploys on merge. Batch 1 via [PR #6](https://github.com/Mohammad2460/twilio-dialpad/pull/6); v2 via [PR #4](https://github.com/Mohammad2460/twilio-dialpad/pull/4).
+
+### NEXT (planned, not built) — AI cross-call retrieval ("AI is the product" growth bet)
+_Full reasoning + live-pricing math from session 2026-06-12. Decision: **open full cross-call retrieval to ALL tiers, metered by credits; sell Pro on model quality + credit bucket, NOT on access.**_
+- **Why:** gpt-5-mini full-history query is dirt cheap — even maxed at the 60k input cap = **~7 credits** (free_grant=50 → 50+ queries). Cost driver is the MODEL (Claude 12–40× mini), not retrieval. Gating retrieval by tier throttles the aha for no margin gain; credits already protect margin (3×).
+- **Phase 1 (ship first, ~1 day):** general-mode auto-context in `backend/app/api/ai/chat/route.ts` — load recent transcripts newest-first up to a ~40k-token budget (under the 60k cap), open to all, gpt-5-mini, cache-friendly block (mini cache_read $0.025 = 10× cheaper → multi-turn ~free). Kills the empty-AI-tab activation leak. Client: `src/sidepanel/components/AiTab.tsx` general mode currently sends NO transcript.
+- **Phase 2:** tool-use loop reusing existing MCP Supabase queries (`search_transcripts`/`get_transcript`/`list_recent_calls`) — model fetches relevant calls instead of stuffing. gpt-5-mini tool-use for free, Claude for Pro. Bounded by 60k + credits.
+- **Phase 3 (after Anthropic funded):** in-context Pro nudges ("run on Claude →"), per-answer credit-cost display, Pro 1000-cr/mo bucket messaging. Hard guardrail only if telemetry shows abuse (numbers say it won't).
+- **Risks:** (1) 🔴 Anthropic acct still UNFUNDED — Pro's Claude differentiator is down until funded; gates Phase 3. (2) gpt-5-mini answer quality must carry the free aha — cheap test: run 3 real transcripts through a "what to do differently" prompt; if weak, give free a tiny Claude-haiku allowance for the aha.
+- **Metrics:** activation (% new users sending AI msg w/ call context session 1), aha (% asking 2nd cross-call Q), conversion (free→Pro, top-up freq), churn (Pro M2 retention, % exhausting free grant w/o top-up).
+
+### Post-overhaul fixes + cleanup ([PR #9](https://github.com/Mohammad2460/twilio-dialpad/pull/9))
+- **Setup-blocking regression fixed (TDD).** `SettingsSchema` rejected backend-voice installs (empty `apiKeySid`/`twimlAppSid`/`functionUrl` + unknown `backendVoice`) → "Setup failed" Zod error. Schema now accepts `''` for those legacy fields (still strict when non-empty) + adds `backendVoice`. Test in `tests/unit/storage.test.ts`.
+- **SMS hidden.** Removed SMS tab (button+route) from `src/sidepanel/App.tsx` and `EnableSmsSection` from `SettingsTab.tsx`. Decision: A2P 10DLC friction + off the AI-product strategy. Backend SMS routes left dormant (not deleted). `SmsTab.tsx` orphaned (kept).
+- **Recording kept + fixed for backend-voice.** `RecordingsSection` gate was Function-only (`serviceSid&&env&&configSecret&&messagingProvisioned`) → unreachable on backend-voice. Now `backendVoice || (legacy…)`. Ingest already server-side via twiml `recordingStatusCallback`.
+- **Calls section wired (dead link killed).** New backend route `POST /api/voice/config/[userId]` (device-auth) updates `incoming_enabled`/`forward_enabled`/`forward_number`/`record_outgoing` in the users row; twiml route reads them live. `pushConfig` (`src/shared/twilio-env.ts`) now branches backend-voice → this endpoint, legacy → Function `/config`. `CallSettingsSection` rewritten: working incoming toggle + forward toggle + E.164 number input; removed dead "Advanced call settings → options page" button (options page no longer hosts forwarding/voicemail).
+- Verify: ext tsc 0 · backend tsc 0 (needs `cd backend && npm i` locally — modules not vendored) · 35/35 tests · build ✓.
 
 ### Batch 2 — onboarding overhaul ([PR #8](https://github.com/Mohammad2460/twilio-dialpad/pull/8), SHIPPED)
 _Spec: `docs/superpowers/specs/2026-06-11-onboarding-overhaul-design.md` · Plan: `docs/superpowers/plans/2026-06-11-onboarding-overhaul.md`._
