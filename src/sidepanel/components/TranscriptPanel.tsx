@@ -81,8 +81,8 @@ export function TranscriptPanel() {
             <p className="text-gray-400 italic">Listening…</p>
           ) : (
             <div className="space-y-1.5">
-              {draft.map((seg, i) => (
-                <div key={i} className="flex gap-1.5">
+              {draft.map((seg) => (
+                <div key={`${seg.speaker}-${seg.isFinal ? seg.ts : 'interim'}`} className="flex gap-1.5">
                   <span
                     className={[
                       'shrink-0 rounded px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wider',
