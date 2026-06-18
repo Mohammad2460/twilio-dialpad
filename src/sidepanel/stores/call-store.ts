@@ -21,7 +21,8 @@ interface CallStore {
   setSelectedCallerId: (id: string) => void;
 
   // Live transcript draft — appended in real-time, cleared when a new call begins.
-  // Interim segments overwrite the trailing interim per speaker; final segments are stable.
+  // At most one live interim per speaker — a speaker's prior interim is dropped on
+  // their next segment; final segments are stable and never removed.
   transcriptDraft: TranscriptSegment[];
   transcriptError: string | null;
   appendTranscriptSegment: (seg: TranscriptSegment) => void;
@@ -57,18 +58,14 @@ export const useCallStore = create<CallStore>((set) => ({
   setTranscriptError: (e: string | null) => set({ transcriptError: e }),
   appendTranscriptSegment: (seg) =>
     set((state) => {
-      const list = state.transcriptDraft;
-      // Replace trailing interim segment for the same speaker; otherwise append.
-      const lastIdx = list.length - 1;
-      if (lastIdx >= 0) {
-        const last = list[lastIdx];
-        if (!last.isFinal && last.speaker === seg.speaker) {
-          const next = list.slice(0, lastIdx);
-          next.push(seg);
-          return { transcriptDraft: next };
-        }
-      }
-      return { transcriptDraft: [...list, seg] };
+      // Keep at most one live interim per speaker. multichannel=true interleaves
+      // user (ch0) and remote (ch1) results, so a trailing-only check leaves stale
+      // interim lines when speakers overlap. Drop this speaker's prior interim
+      // (finals are stable), then append the new segment.
+      const base = state.transcriptDraft.filter(
+        (s) => s.isFinal || s.speaker !== seg.speaker,
+      );
+      return { transcriptDraft: [...base, seg] };
     }),
   clearTranscriptDraft: () => set({ transcriptDraft: [] }),
 }));
