@@ -584,12 +584,44 @@ function HelpSection() {
           <li>US/Canada numbers may need a registered caller ID.</li>
         </ul>
       </details>
-      <a
-        href="mailto:support@dialler.app"
-        className="block text-xs font-medium text-brand-600 hover:underline"
-      >
-        Contact support →
-      </a>
+      <SupportRow />
     </Section>
+  );
+}
+
+const SUPPORT_EMAIL = 'peaceinmind2460@gmail.com';
+
+/**
+ * mailto: links are unreliable inside the side panel (no-op without a default
+ * mail app), so show the address with one-tap copy and keep mailto as a
+ * best-effort fallback that opens in a real tab.
+ */
+function SupportRow() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-gray-900">Contact support</p>
+        <a
+          href={`mailto:${SUPPORT_EMAIL}?subject=Twilio%20Dialpad%20support`}
+          target="_blank"
+          rel="noreferrer"
+          className="block truncate text-xs text-brand-600 hover:underline"
+        >
+          {SUPPORT_EMAIL}
+        </a>
+      </div>
+      <button
+        type="button"
+        onClick={async () => {
+          await navigator.clipboard.writeText(SUPPORT_EMAIL);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+      >
+        {copied ? 'Copied ✓' : 'Copy email'}
+      </button>
+    </div>
   );
 }

@@ -386,7 +386,9 @@ export function Dialpad() {
             className="flex h-16 flex-col items-center justify-center rounded-full bg-gray-100 text-2xl font-light text-gray-900 transition hover:bg-gray-200 active:scale-95 active:bg-gray-300"
           >
             <span>{k.d}</span>
-            {k.sub && <span className="text-[10px] tracking-widest text-gray-500">{k.sub}</span>}
+            <span className="min-h-[0.875rem] text-[10px] tracking-widest text-gray-500">
+              {k.sub ?? ' '}
+            </span>
           </button>
         ))}
       </div>
