@@ -25,14 +25,8 @@ export type Feature =
   | 'sms'
   | 'recording';
 
-/** Features that require a PAID subscription (NOT unlocked by the trial). */
-const PAID_FEATURES: readonly Feature[] = [
-  'autodial_unlimited',
-  'ai_analysis',
-  'cloud_history',
-  'sms',
-  'recording',
-];
+// NOTE: trial now unlocks every feature (see can() below), so there is no
+// separate paid-only list. Post-trial, all features require a paid sub.
 
 export interface Entitlements {
   tier: Tier;
@@ -68,8 +62,9 @@ function build(sub: Subscription | null, fromCache: boolean, stale: boolean): En
     daysLeft: sub?.daysLeft,
     fromCache,
     stale,
-    // Trial unlocks managed transcription only; all other features require paid.
-    can: (f) => (f === 'managed_transcription' ? paid || trialing : paid && PAID_FEATURES.includes(f)),
+    // Trial = full Pro: every feature unlocked for 7 days, then paid-only.
+    // (Matches backend user_has_access, which already allows trialing users.)
+    can: () => paid || trialing,
   };
 }
 
