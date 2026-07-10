@@ -32,7 +32,10 @@ export function SettingsTab() {
 
   return (
     <div className="space-y-5 p-4">
-      <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
+      <header>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Configuration</p>
+        <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Settings</h1>
+      </header>
 
       <SecureDeviceSection settings={settings} />
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
@@ -49,8 +52,8 @@ export function SettingsTab() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold text-gray-900">{title}</h2>
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{title}</h2>
       <div className="space-y-3">{children}</div>
     </section>
   );

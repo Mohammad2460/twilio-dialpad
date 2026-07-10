@@ -383,7 +383,7 @@ export function Dialpad() {
             key={k.d}
             type="button"
             onClick={() => press(k.d)}
-            className="flex h-16 flex-col items-center justify-center rounded-full bg-gray-100 text-2xl font-light text-gray-900 transition active:bg-gray-300"
+            className="flex h-16 flex-col items-center justify-center rounded-full bg-gray-100 text-2xl font-light text-gray-900 transition hover:bg-gray-200 active:scale-95 active:bg-gray-300"
           >
             <span>{k.d}</span>
             {k.sub && <span className="text-[10px] tracking-widest text-gray-500">{k.sub}</span>}

@@ -86,14 +86,14 @@ export function ClaudeTab() {
               This URL is your private key to your call data — never share it.
             </p>
           </Step>
-          <Step n={2} title="Open claude.ai → Settings → Connectors">
+          <Step n={2} title="Open claude.ai → Settings → Customize">
             <a
-              href="https://claude.ai/settings/connectors"
+              href="https://claude.ai/new#settings/customize-connectors"
               target="_blank"
               rel="noreferrer"
               className="text-xs font-medium text-orange-700 underline decoration-orange-300 underline-offset-2 hover:text-orange-800"
             >
-              Open Claude connector settings ↗
+              Open Claude → Customize → Connectors ↗
             </a>
           </Step>
           <Step n={3} title="Click “Add custom connector” and paste the URL">

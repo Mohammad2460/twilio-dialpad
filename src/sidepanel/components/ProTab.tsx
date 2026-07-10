@@ -136,7 +136,10 @@ export function ProTab() {
   if (notRegistered) {
     return (
       <div className="space-y-4 p-4">
-        <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+        <header>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Plan &amp; billing</p>
+          <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Pro</h1>
+        </header>
 
         <CreditsSection />
         <UpgradeSheet
@@ -157,7 +160,10 @@ export function ProTab() {
     const renewsOn = fmtDate(sub.currentPeriodEnd);
     return (
       <div className="space-y-4 p-4">
-        <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+        <header>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Plan &amp; billing</p>
+          <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Pro</h1>
+        </header>
 
         <CreditsSection />
 
@@ -195,7 +201,10 @@ export function ProTab() {
     const trialEnds = fmtDate(sub.trialEndsAt);
     return (
       <div className="space-y-4 p-4">
-        <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+        <header>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Plan &amp; billing</p>
+          <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Pro</h1>
+        </header>
 
         <CreditsSection />
 
@@ -223,7 +232,10 @@ export function ProTab() {
     const accessUntil = fmtDate(sub.currentPeriodEnd);
     return (
       <div className="space-y-4 p-4">
-        <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+        <header>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Plan &amp; billing</p>
+          <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Pro</h1>
+        </header>
 
         <CreditsSection />
 
@@ -249,7 +261,10 @@ export function ProTab() {
   if (sub?.status === 'past_due') {
     return (
       <div className="space-y-4 p-4">
-        <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+        <header>
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Plan &amp; billing</p>
+          <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Pro</h1>
+        </header>
 
         <CreditsSection />
 
@@ -274,7 +289,10 @@ export function ProTab() {
 
   return (
     <div className="space-y-4 p-4">
-      <h1 className="text-lg font-semibold text-gray-900">Pro</h1>
+      <header>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Plan &amp; billing</p>
+        <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Pro</h1>
+      </header>
       <TierComparison />
       <UpgradeSheet
         onUpgrade={handleUpgrade}

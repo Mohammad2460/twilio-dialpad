@@ -128,8 +128,10 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={[
-        'flex-1 py-3 text-sm font-medium',
-        active ? 'text-brand-600 border-t-2 border-brand-600 -mt-px' : 'text-gray-500 hover:text-gray-900',
+        'flex-1 py-2.5 text-xs font-medium tracking-wide transition-colors',
+        active
+          ? 'text-brand-700 border-t-2 border-brand-600 -mt-px bg-brand-50/40'
+          : 'text-gray-500 border-t-2 border-transparent -mt-px hover:text-gray-800',
       ].join(' ')}
     >
       {children}
