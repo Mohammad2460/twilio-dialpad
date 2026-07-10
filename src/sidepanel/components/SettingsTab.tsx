@@ -6,6 +6,7 @@ import { maskSid } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount, isDeviceRegistered, registerDevice } from '@shared/cloud';
 import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
+import { BYO_DEEPGRAM_ENABLED } from '@shared/flags';
 import { enableBubble, disableBubble } from '@shared/bubble-perms';
 import { PaywallGate } from './PaywallGate';
 
@@ -226,6 +227,41 @@ function AISection({
   }
 
   const managedOn = !!settings.managedTranscription;
+
+  if (!BYO_DEEPGRAM_ENABLED) {
+    return (
+      <Section title="Transcription & Claude">
+        <Toggle
+          label="Call transcription"
+          description="Live transcripts for every call — included, no setup. Metered by credits."
+          checked={managedOn}
+          onChange={(v) => onUpdate({ managedTranscription: v })}
+        />
+        {mcpUrl && (
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Ask Claude about your calls from claude.ai — set up in the Claude tab. Keep this URL private.
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded bg-gray-50 px-2 py-1 text-xs">{mcpUrl}</code>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(mcpUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                className="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+        )}
+      </Section>
+    );
+  }
 
   return (
     <Section title="AI & Transcription">

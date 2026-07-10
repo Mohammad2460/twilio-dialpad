@@ -6,6 +6,7 @@ import {
   startTopUp,
   TOPUP_PACKS,
 } from '@shared/credits';
+import { AI_CHAT_ENABLED } from '@shared/flags';
 
 /**
  * Managed-AI credits panel for the Pro tab (P8.6): live balance + one-tap
@@ -53,13 +54,15 @@ export function CreditsSection() {
   return (
     <section className="rounded-lg border border-gray-200 p-3 space-y-2">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">AI credits</h2>
+        <h2 className="text-sm font-semibold text-gray-900">{AI_CHAT_ENABLED ? 'AI credits' : 'Transcription credits'}</h2>
         <span className={`text-sm font-medium ${low ? 'text-amber-700' : 'text-gray-900'}`}>
           {balance === null ? '—' : `${balance} cr`}
         </span>
       </div>
       <p className="text-[11px] text-gray-500">
-        Power the in-call AI chatbox. 1 credit = $0.01. Haiku is cheapest; Sonnet & Opus cost more.
+        {AI_CHAT_ENABLED
+          ? 'Power the in-call AI chatbox. 1 credit = $0.01. Haiku is cheapest; Sonnet & Opus cost more.'
+          : 'Power live call transcription. 1 credit = $0.01, metered by real usage.'}
       </p>
       <div className="grid grid-cols-3 gap-2">
         {TOPUP_PACKS.map((credits) => (

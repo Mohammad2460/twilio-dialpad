@@ -4,6 +4,7 @@ import { getManager } from '../hooks/use-device';
 import { usePasteSuggestion } from '../hooks/use-paste-suggestion';
 import { normalizeE164, formatForDisplay } from '@shared/phone';
 import { storage } from '@shared/storage';
+import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 
 const KEYS: { d: string; sub?: string }[] = [
   { d: '1' }, { d: '2', sub: 'ABC' }, { d: '3', sub: 'DEF' },
@@ -415,14 +416,24 @@ export function Dialpad() {
         </button>
       </div>
 
-      {/* ── AI promo — drive AI usage ── */}
-      <button
-        type="button"
-        onClick={() => setView('ai')}
-        className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
-      >
-        <span>✨</span> Ask AI about your calls
-      </button>
+      {/* ── AI promo — in-extension chat when enabled, Claude MCP otherwise ── */}
+      {AI_CHAT_ENABLED ? (
+        <button
+          type="button"
+          onClick={() => setView('ai')}
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-700 transition hover:bg-blue-100"
+        >
+          <span>✨</span> Ask AI about your calls
+        </button>
+      ) : MCP_PROMO_ENABLED ? (
+        <button
+          type="button"
+          onClick={() => setView('ai')}
+          className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-3 py-2.5 text-sm font-semibold text-orange-700 transition hover:bg-orange-100"
+        >
+          Ask Claude about your calls
+        </button>
+      ) : null}
     </div>
   );
 }
