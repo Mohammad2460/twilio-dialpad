@@ -12,9 +12,8 @@ interface Props {
 export function SetupForm({ initial, onSubmit }: Props) {
   const [accountSid, setAccountSid] = useState(initial?.accountSid ?? '');
   const [authToken, setAuthToken] = useState('');
-  const [clientIdentity, setClientIdentity] = useState(initial?.clientIdentity ?? 'dialpad');
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [marketing, setMarketing] = useState(false);
   const [numbers, setNumbers] = useState<IncomingPhoneNumber[]>([]);
   const [selectedNumber, setSelectedNumber] = useState<IncomingPhoneNumber | null>(null);
   const [loading, setLoading] = useState(false);
@@ -22,8 +21,15 @@ export function SetupForm({ initial, onSubmit }: Props) {
 
   const sidOk = /^AC[a-zA-Z0-9]{32}$/.test(accountSid);
   const tokenOk = authToken.length >= 30;
-  const identityOk = /^[a-zA-Z][a-zA-Z0-9_-]{0,120}$/.test(clientIdentity);
+  const nameOk = name.trim().length >= 2;
   const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+
+  // Twilio Client identity is a technical routing string (no spaces, must start
+  // with a letter). Derive it from the person's name; fall back to 'dialpad'.
+  const clientIdentity = (() => {
+    const slug = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 120);
+    return /^[a-z][a-z0-9_-]*$/.test(slug) ? slug : 'dialpad';
+  })();
 
   async function loadNumbers() {
     if (!sidOk || !tokenOk) return;
@@ -52,13 +58,13 @@ export function SetupForm({ initial, onSubmit }: Props) {
       clientIdentity,
       callerId: selectedNumber.phone_number,
       numberSid: selectedNumber.sid,
+      name: name.trim(),
       email: email.trim(),
-      marketing,
     });
   }
 
   const canLoadNumbers = sidOk && tokenOk && !loading;
-  const canSubmit = !!selectedNumber && identityOk && emailOk && !loading;
+  const canSubmit = sidOk && tokenOk && nameOk && emailOk && !!selectedNumber && !loading;
 
   return (
     <div className="mx-auto max-w-xl p-8">
@@ -68,7 +74,7 @@ export function SetupForm({ initial, onSubmit }: Props) {
       </p>
 
       <div className="mt-6 space-y-4 rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-        <Field label="Account SID">
+        <Field label="Account SID" required>
           <input
             type="text"
             value={accountSid}
@@ -80,7 +86,7 @@ export function SetupForm({ initial, onSubmit }: Props) {
           {accountSid && !sidOk && <Hint error>Must start with AC and be 34 chars</Hint>}
         </Field>
 
-        <Field label="Auth Token">
+        <Field label="Auth Token" required>
           <input
             type="password"
             value={authToken}
@@ -90,7 +96,7 @@ export function SetupForm({ initial, onSubmit }: Props) {
           />
         </Field>
 
-        <Field label="Email (for trial reminders + account recovery)">
+        <Field label="Email" required>
           <input
             type="email"
             value={email}
@@ -101,24 +107,15 @@ export function SetupForm({ initial, onSubmit }: Props) {
           {email && !emailOk && <Hint error>Enter a valid email.</Hint>}
         </Field>
 
-        <label className="flex cursor-pointer items-start gap-2">
-          <input
-            type="checkbox"
-            checked={marketing}
-            onChange={(e) => setMarketing(e.target.checked)}
-            className="mt-0.5 h-4 w-4 rounded border-gray-300"
-          />
-          <span className="text-xs text-gray-600">Also send me product tips &amp; offers (optional)</span>
-        </label>
-
-        <Field label="Your name for this device (Twilio Client identity)">
+        <Field label="Your name" required>
           <input
             type="text"
-            value={clientIdentity}
-            onChange={(e) => setClientIdentity(e.target.value.trim())}
-            placeholder="e.g. work-laptop"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Alex Rivera"
+            autoComplete="name"
           />
-          {clientIdentity && !identityOk && <Hint error>Letters, numbers, _ - only. Start with a letter.</Hint>}
+          {name && !nameOk && <Hint error>Enter your name.</Hint>}
         </Field>
 
         {numbers.length === 0 && (
@@ -172,10 +169,13 @@ export function SetupForm({ initial, onSubmit }: Props) {
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, required, children }: { label: string; required?: boolean; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium text-gray-700">{label}</span>
+      <span className="text-sm font-medium text-gray-700">
+        {label}
+        {required && <span className="text-red-500"> *</span>}
+      </span>
       <div className="mt-1 [&_input]:w-full [&_input]:rounded-md [&_input]:border [&_input]:border-gray-300 [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm [&_input]:outline-none [&_input:focus]:border-brand-500 [&_input:focus]:ring-1 [&_input:focus]:ring-brand-500">
         {children}
       </div>

@@ -11,8 +11,8 @@ export interface SetupInput {
   clientIdentity: string;
   callerId: string;
   numberSid: string;
+  name: string;
   email: string;
-  marketing: boolean;
 }
 
 interface Props {
@@ -43,8 +43,8 @@ export function ProvisioningWizard({ initial, onDone }: Props) {
         clientIdentity: inp.clientIdentity,
         numberSid: inp.numberSid,
         callerId: inp.callerId,
+        name: inp.name,
         email: inp.email,
-        marketingConsent: inp.marketing,
         provision: true,
       });
       track('autodeploy_succeeded');

@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
     numberSid?: unknown;
     callerId?: unknown;
     clientIdentity?: unknown;
+    name?: unknown;
     email?: unknown;
     marketingConsent?: unknown;
     provision?: unknown;
@@ -60,6 +61,7 @@ export async function POST(req: NextRequest) {
   const callerId = typeof body.callerId === 'string' ? body.callerId : '';
   const clientIdentity = typeof body.clientIdentity === 'string' ? body.clientIdentity : 'dialpad';
   const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const name = typeof body.name === 'string' ? body.name.trim().slice(0, 120) : '';
   const marketingConsent = body.marketingConsent === true;
 
   // ── Ownership proof: token must authenticate against this SID at Twilio.
@@ -221,6 +223,7 @@ export async function POST(req: NextRequest) {
           caller_id: callerId,
           client_identity: clientIdentity,
           backend_voice: true,
+          ...(name ? { name } : {}),
           ...emailCols,
         })
         .eq('id', userId);
