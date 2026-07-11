@@ -13,6 +13,8 @@ import { FolderPermissionBanner } from './components/FolderPermissionBanner';
 import { SettingsTab } from './components/SettingsTab';
 import { ProTab } from './components/ProTab';
 import { AiTab } from './components/AiTab';
+import { ClaudeTab } from './components/ClaudeTab';
+import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 import { TrialStartPopup } from './components/TrialStartPopup';
 import { TrialBanner } from './components/TrialBanner';
 import { getEntitlements, type Entitlements } from '@shared/entitlements';
@@ -74,7 +76,7 @@ export function App() {
         ) : view === 'pro' ? (
           <ProTab />
         ) : view === 'ai' ? (
-          <AiTab />
+          AI_CHAT_ENABLED ? <AiTab /> : MCP_PROMO_ENABLED ? <ClaudeTab /> : <Dialpad />
         ) : (
           <Dialpad />
         )}
@@ -94,9 +96,11 @@ function Footer() {
       <TabButton active={view === 'dialpad'} onClick={() => setView('dialpad')}>
         Keypad
       </TabButton>
-      <TabButton active={view === 'ai'} onClick={() => setView('ai')}>
-        AI
-      </TabButton>
+      {(AI_CHAT_ENABLED || MCP_PROMO_ENABLED) && (
+        <TabButton active={view === 'ai'} onClick={() => setView('ai')}>
+          {AI_CHAT_ENABLED ? 'AI' : 'Claude'}
+        </TabButton>
+      )}
       <TabButton active={view === 'history'} onClick={() => setView('history')}>
         Recents
       </TabButton>
@@ -124,8 +128,10 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={[
-        'flex-1 py-3 text-sm font-medium',
-        active ? 'text-brand-600 border-t-2 border-brand-600 -mt-px' : 'text-gray-500 hover:text-gray-900',
+        'flex-1 py-2.5 text-xs font-medium tracking-wide transition-colors',
+        active
+          ? 'text-brand-700 border-t-2 border-brand-600 -mt-px bg-brand-50/40'
+          : 'text-gray-500 border-t-2 border-transparent -mt-px hover:text-gray-800',
       ].join(' ')}
     >
       {children}

@@ -3,6 +3,7 @@ import { DialerInput } from './DialerInput';
 import { DialerQueue } from './DialerQueue';
 import { DialerControls } from './DialerControls';
 import { useDialerStore } from '../stores/dialer-store';
+import { PaywallGate } from './PaywallGate';
 
 /**
  * Auto-dialer side-panel view.
@@ -23,11 +24,13 @@ export function AutoDialer() {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex-1 overflow-y-auto">
-        <DialerInput />
-        <DialerQueue />
-      </div>
-      <DialerControls />
+      <PaywallGate feature="autodial_unlimited">
+        <div className="flex-1 overflow-y-auto">
+          <DialerInput />
+          <DialerQueue />
+        </div>
+        <DialerControls />
+      </PaywallGate>
     </div>
   );
 }

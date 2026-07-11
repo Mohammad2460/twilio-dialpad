@@ -46,8 +46,9 @@ interface TokenBody {
  * Flow per window: settle the previous window to actual usage → reserve the next
  * window's estimated credits → mint a short-lived Deepgram JWT. 402 when the
  * balance can't cover the next window (the client then stops transcription; the
- * call is unaffected). Device-auth; metered by credits (Haiku-tier free taste
- * applies — no Pro gate, transcription is the funnel).
+ * call is unaffected). Device-auth; requires active access (trial or Pro):
+ * free during trial, credit-metered on Pro. Credits stay banked when Pro
+ * lapses and become usable again on renewal.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
@@ -56,8 +57,20 @@ export async function POST(req: NextRequest) {
 
   if (!process.env.DEEPGRAM_API_KEY) return j({ error: 'managed_transcription_unavailable' }, 503);
 
-  // Managed transcription is FREE during the 7-day trial (no credit reserve/debit).
+  // Managed transcription requires active access: FREE during the 7-day trial
+  // (no credit reserve/debit), credit-metered on Pro. Expired/free users are
+  // blocked even with banked credits — those unlock again when Pro renews.
   const { data: trialing } = await supabase.rpc('user_is_trialing', { uid: userId });
+  if (!trialing) {
+    const { data: access } = await supabase.rpc('user_has_access', { uid: userId });
+    if (!access) {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
+      return j(
+        { error: 'subscription_required', topUpUrl: `${baseUrl}/api/checkout/${userId}` },
+        402,
+      );
+    }
+  }
 
   let body: TokenBody;
   try {

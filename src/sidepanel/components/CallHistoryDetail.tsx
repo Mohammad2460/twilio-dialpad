@@ -5,6 +5,7 @@ import { formatForDisplay } from '@shared/phone';
 import { computeTalkRatio } from '@shared/talk-ratio';
 import { PaywallGate } from './PaywallGate';
 import { AiChatbox } from './AiChatbox';
+import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 
 interface Props {
   callSid: string;
@@ -143,8 +144,19 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
           {t && filtered.length === 0 && query && (
             <p className="text-sm text-gray-400 italic">No matches.</p>
           )}
+          {/* Claude MCP — the primary post-call analysis path */}
+          {MCP_PROMO_ENABLED && t && !query && (
+            <div className="mb-3 rounded-lg border border-orange-100 bg-orange-50/60 p-3">
+              <p className="text-xs font-semibold text-orange-800">Analyze this call with Claude</p>
+              <p className="mt-0.5 text-[11px] text-gray-600">
+                Connected via MCP, Claude already sees this transcript — just ask it about this call
+                on claude.ai. Not connected yet? Set it up in the Claude tab (takes a minute).
+              </p>
+            </div>
+          )}
+
           {/* AI call analysis — Pro-gated; free users see an upsell */}
-          {t && !query && (
+          {AI_CHAT_ENABLED && t && !query && (
             <div className="mb-3">
               <PaywallGate feature="ai_analysis">
                 <div className="rounded-lg border border-brand-100 bg-brand-50 p-3">
@@ -159,7 +171,7 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
           )}
 
           {/* Managed AI chatbox — ask Claude in-extension (credit-metered). */}
-          {t && !query && (
+          {AI_CHAT_ENABLED && t && !query && (
             <div className="mb-3">
               {!showChat ? (
                 <button

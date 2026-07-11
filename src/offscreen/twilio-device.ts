@@ -5,6 +5,7 @@ import { mixToStereo, type MixedStream } from '@shared/audio-mixer';
 import { DeepgramSession } from '@shared/deepgram';
 import { ManagedTranscription } from '@shared/managed-transcription';
 import { authHeader } from '@shared/cloud';
+import { BYO_DEEPGRAM_ENABLED } from '@shared/flags';
 
 const BACKEND_BASE_URL = 'https://dialler-mcp.vercel.app';
 
@@ -377,9 +378,14 @@ export class DeviceManager {
 
       // Start transcription: managed (our key, credits) if enabled, else BYO key.
       // Failure is always non-fatal — the call continues regardless.
-      const apiKey = this.settings?.deepgramApiKey;
+      // BYO keys are ignored while BYO_DEEPGRAM_ENABLED is off — managed only.
+      const apiKey = BYO_DEEPGRAM_ENABLED ? this.settings?.deepgramApiKey : undefined;
       const model = this.settings?.deepgramModel;
-      const managedOn = this.settings?.managedTranscription;
+      // BYO-off migration: users who had transcription via their own key keep it,
+      // seamlessly moved onto the managed path (our key, credit-metered).
+      const managedOn =
+        this.settings?.managedTranscription ||
+        (!BYO_DEEPGRAM_ENABLED && !!this.settings?.deepgramApiKey);
       const callSid = call.parameters.CallSid ?? '';
       const remoteNumber = (call.parameters.From ?? call.parameters.To ?? '') as string;
       if (callSid && (managedOn || apiKey)) {

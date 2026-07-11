@@ -22,16 +22,23 @@ export function TrialStartPopup() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <div className="w-full max-w-sm rounded-xl bg-white p-5 shadow-xl">
-        <h2 className="text-lg font-semibold text-gray-900">🎉 You&apos;re on a 7-day free trial</h2>
-        <p className="mt-2 text-sm text-gray-600">
-          Managed call transcription + AI call analysis are unlocked. Calling is always free.
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Free trial started</p>
+        <h2 className="mt-0.5 text-lg font-semibold text-gray-900">Everything in Pro, free for 7 days</h2>
+        <ul className="mt-3 space-y-1.5 text-sm text-gray-600">
+          <li>✓ Live call transcription — no setup</li>
+          <li>✓ Claude connector — ask Claude about your calls</li>
+          <li>✓ Auto-dialer — import a list, call through it</li>
+          <li>✓ SMS, call recording &amp; cloud history</li>
+        </ul>
+        <p className="mt-3 text-xs text-gray-500">
+          Calling with your own Twilio stays free forever — with or without Pro.
         </p>
         <button
           type="button"
           onClick={dismiss}
           className="mt-4 w-full rounded-md bg-brand-600 py-2 text-sm font-medium text-white hover:bg-brand-700"
         >
-          Got it
+          Start exploring
         </button>
       </div>
     </div>

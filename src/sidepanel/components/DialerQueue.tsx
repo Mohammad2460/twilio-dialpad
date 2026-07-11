@@ -24,8 +24,12 @@ export function DialerQueue() {
 
   if (queue.length === 0) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500">
-        No numbers in queue. Paste some above to begin.
+      <div className="px-8 pb-8 pt-2 text-center">
+        <p className="text-sm font-medium text-gray-900">Your call list is empty</p>
+        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+          Upload a CSV or paste numbers above, then work through the list one
+          call at a time — outcomes tracked for every dial.
+        </p>
       </div>
     );
   }

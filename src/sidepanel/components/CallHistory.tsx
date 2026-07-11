@@ -72,7 +72,17 @@ export function CallHistory() {
 
   if (history.length === 0) {
     return (
-      <div className="p-6 text-center text-sm text-gray-500">No recent calls.</div>
+      <div className="flex h-full flex-col items-center justify-center px-8 pb-16 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
+          <svg viewBox="0 0 24 24" fill="currentColor" className="h-6 w-6 text-gray-400">
+            <path d="M6.62 10.79a15.05 15.05 0 0 0 6.59 6.59l2.2-2.2a1 1 0 0 1 1.05-.24c1.16.39 2.41.6 3.7.6a1 1 0 0 1 1 1V20a1 1 0 0 1-1 1A18 18 0 0 1 3 3a1 1 0 0 1 1-1h3.5a1 1 0 0 1 1 1c0 1.3.21 2.54.6 3.7a1 1 0 0 1-.24 1.05l-2.24 2.04Z" />
+          </svg>
+        </div>
+        <p className="mt-3 text-sm font-medium text-gray-900">No calls yet</p>
+        <p className="mt-1 text-xs leading-relaxed text-gray-500">
+          Your recent calls and transcripts will show up here after your first call from the Keypad.
+        </p>
+      </div>
     );
   }
 
@@ -102,7 +112,7 @@ export function CallHistory() {
               ? `${Math.floor(h.durationSec / 60)}:${String(h.durationSec % 60).padStart(2, '0')}`
               : null;
           return (
-            <li key={h.id} className="flex items-center gap-2 px-4 py-3">
+            <li key={h.id} className="flex items-center gap-2 px-4 py-3 transition-colors hover:bg-gray-50">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <DirectionBadge kind={kind} label={label} />

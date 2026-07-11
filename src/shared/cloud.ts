@@ -65,6 +65,7 @@ export async function registerDevice(opts: {
   numberSid?: string;
   callerId?: string;
   clientIdentity?: string;
+  name?: string;
   email?: string;
   marketingConsent?: boolean;
   provision?: boolean;

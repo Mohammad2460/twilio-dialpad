@@ -6,6 +6,7 @@ import { maskSid } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount, isDeviceRegistered, registerDevice } from '@shared/cloud';
 import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
+import { BYO_DEEPGRAM_ENABLED } from '@shared/flags';
 import { enableBubble, disableBubble } from '@shared/bubble-perms';
 import { PaywallGate } from './PaywallGate';
 
@@ -31,7 +32,10 @@ export function SettingsTab() {
 
   return (
     <div className="space-y-5 p-4">
-      <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
+      <header>
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-brand-600">Configuration</p>
+        <h1 className="mt-0.5 text-lg font-semibold text-gray-900">Settings</h1>
+      </header>
 
       <SecureDeviceSection settings={settings} />
       <CallSettingsSection settings={settings} onUpdate={setSettings} />
@@ -48,8 +52,8 @@ export function SettingsTab() {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-      <h2 className="mb-3 text-sm font-semibold text-gray-900">{title}</h2>
+    <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+      <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{title}</h2>
       <div className="space-y-3">{children}</div>
     </section>
   );
@@ -227,14 +231,55 @@ function AISection({
 
   const managedOn = !!settings.managedTranscription;
 
+  if (!BYO_DEEPGRAM_ENABLED) {
+    return (
+      <Section title="Transcription & Claude">
+        <PaywallGate feature="managed_transcription">
+          <Toggle
+            label="Call transcription"
+            description="Live transcripts for every call — included, no setup. Metered by credits."
+            checked={managedOn}
+            onChange={(v) => onUpdate({ managedTranscription: v })}
+          />
+        </PaywallGate>
+        {mcpUrl && (
+          <PaywallGate feature="ai_analysis">
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Ask Claude about your calls from claude.ai — set up in the Claude tab. Keep this URL private.
+            </p>
+            <div className="mt-1 flex items-center gap-2">
+              <code className="min-w-0 flex-1 truncate rounded bg-gray-50 px-2 py-1 text-xs">{mcpUrl}</code>
+              <button
+                type="button"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(mcpUrl);
+                  setCopied(true);
+                  setTimeout(() => setCopied(false), 1500);
+                }}
+                className="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          </div>
+          </PaywallGate>
+        )}
+      </Section>
+    );
+  }
+
   return (
     <Section title="AI & Transcription">
-      <Toggle
-        label="Managed transcription"
-        description="Use our transcription — no Deepgram key needed. Metered by AI credits. Off = bring your own key (free)."
-        checked={managedOn}
-        onChange={(v) => onUpdate({ managedTranscription: v })}
-      />
+      <PaywallGate feature="managed_transcription">
+        <Toggle
+          label="Managed transcription"
+          description="Use our transcription — no Deepgram key needed. Metered by AI credits. Off = bring your own key (free)."
+          checked={managedOn}
+          onChange={(v) => onUpdate({ managedTranscription: v })}
+        />
+      </PaywallGate>
 
       <div className={managedOn ? 'opacity-50' : ''}>
         <label className="block text-xs font-medium text-gray-700">
@@ -276,6 +321,7 @@ function AISection({
       </button>
 
       {mcpUrl && (
+        <PaywallGate feature="ai_analysis">
         <div className="border-t border-gray-100 pt-3">
           <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
           <p className="mt-0.5 text-xs text-gray-500">
@@ -296,6 +342,7 @@ function AISection({
             </button>
           </div>
         </div>
+        </PaywallGate>
       )}
     </Section>
   );
@@ -545,12 +592,44 @@ function HelpSection() {
           <li>US/Canada numbers may need a registered caller ID.</li>
         </ul>
       </details>
-      <a
-        href="mailto:support@dialler.app"
-        className="block text-xs font-medium text-brand-600 hover:underline"
-      >
-        Contact support →
-      </a>
+      <SupportRow />
     </Section>
+  );
+}
+
+const SUPPORT_EMAIL = 'peaceinmind2460@gmail.com';
+
+/**
+ * mailto: links are unreliable inside the side panel (no-op without a default
+ * mail app), so show the address with one-tap copy and keep mailto as a
+ * best-effort fallback that opens in a real tab.
+ */
+function SupportRow() {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
+        <p className="text-xs font-medium text-gray-900">Contact support</p>
+        <a
+          href={`mailto:${SUPPORT_EMAIL}?subject=Twilio%20Dialpad%20support`}
+          target="_blank"
+          rel="noreferrer"
+          className="block truncate text-xs text-brand-600 hover:underline"
+        >
+          {SUPPORT_EMAIL}
+        </a>
+      </div>
+      <button
+        type="button"
+        onClick={async () => {
+          await navigator.clipboard.writeText(SUPPORT_EMAIL);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }}
+        className="shrink-0 rounded-md border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50"
+      >
+        {copied ? 'Copied ✓' : 'Copy email'}
+      </button>
+    </div>
   );
 }

@@ -25,14 +25,8 @@ export type Feature =
   | 'sms'
   | 'recording';
 
-/** Features that require a PAID subscription (NOT unlocked by the trial). */
-const PAID_FEATURES: readonly Feature[] = [
-  'autodial_unlimited',
-  'ai_analysis',
-  'cloud_history',
-  'sms',
-  'recording',
-];
+// NOTE: trial now unlocks every feature (see can() below), so there is no
+// separate paid-only list. Post-trial, all features require a paid sub.
 
 export interface Entitlements {
   tier: Tier;
@@ -47,8 +41,11 @@ export interface Entitlements {
 }
 
 const CACHE_KEY = 'entitlementsCache';
-const REFRESH_MS = 15 * 60 * 1000; // re-fetch if cache older than this
 const GRACE_MS = 72 * 60 * 60 * 1000; // honor last-known-good for offline paying users
+
+// In-memory dedupe: several gates mount at once — share one backend request
+// per panel session instead of firing N identical fetches.
+let inflight: { userId: string; promise: Promise<Subscription | null> } | null = null;
 
 interface Cached {
   sub: Subscription;
@@ -68,8 +65,9 @@ function build(sub: Subscription | null, fromCache: boolean, stale: boolean): En
     daysLeft: sub?.daysLeft,
     fromCache,
     stale,
-    // Trial unlocks managed transcription only; all other features require paid.
-    can: (f) => (f === 'managed_transcription' ? paid || trialing : paid && PAID_FEATURES.includes(f)),
+    // Trial = full Pro: every feature unlocked for 7 days, then paid-only.
+    // (Matches backend user_has_access, which already allows trialing users.)
+    can: () => paid || trialing,
   };
 }
 
@@ -88,26 +86,31 @@ async function writeCache(sub: Subscription): Promise<void> {
 
 /**
  * Resolve entitlements for the given cloud userId.
- * - Fresh cache (< 15 min) → use it.
- * - Else live fetch → cache + return.
+ * - Always fetch fresh from the backend (source of truth) — concurrent calls
+ *   in the same panel session share one request.
  * - Network failure → honor last-known-good for up to 72h IF the user had
  *   access (don't lock out a payer on a blip); otherwise default to free.
  */
 export async function getEntitlements(userId: string | null): Promise<Entitlements> {
   if (!userId) return FREE;
 
-  const cached = await readCache();
-  if (cached && Date.now() - cached.fetchedAt < REFRESH_MS) {
-    return build(cached.sub, true, false);
+  if (!inflight || inflight.userId !== userId) {
+    inflight = {
+      userId,
+      promise: getSubscription(userId).finally(() => {
+        // Allow the next mount/open to fetch fresh again.
+        setTimeout(() => { inflight = null; }, 5_000);
+      }),
+    };
   }
-
-  const sub = await getSubscription(userId);
+  const sub = await inflight.promise;
   if (sub) {
     await writeCache(sub);
     return build(sub, false, false);
   }
 
-  // Offline / fetch failed.
+  // Offline / fetch failed — fall back to last-known-good.
+  const cached = await readCache();
   if (cached && cached.sub.hasAccess && Date.now() - cached.fetchedAt < GRACE_MS) {
     return build(cached.sub, true, true); // grace: keep paying user unlocked
   }
