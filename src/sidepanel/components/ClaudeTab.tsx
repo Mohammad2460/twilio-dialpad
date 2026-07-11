@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { ensureCloudAccount } from '@shared/cloud';
+import { getEntitlements, type Entitlements } from '@shared/entitlements';
+import { useCallStore } from '../stores/call-store';
 
 /**
  * Claude tab — promotes and sets up the Claude MCP connector.
@@ -10,12 +12,21 @@ export function ClaudeTab() {
   const [mcpUrl, setMcpUrl] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [ent, setEnt] = useState<Entitlements | null>(null);
+  const setView = useCallStore((s) => s.setView);
 
   useEffect(() => {
     ensureCloudAccount()
       .then((a) => setMcpUrl(a.mcpUrl))
       .catch(() => setLoadError(true));
+    (async () => {
+      const { cloudUserId } = await chrome.storage.local.get('cloudUserId');
+      const userId = typeof cloudUserId === 'string' ? cloudUserId : null;
+      setEnt(await getEntitlements(userId));
+    })().catch(() => setEnt(null));
   }, []);
+
+  const entitled = !!ent?.can('ai_analysis');
 
   async function copyUrl() {
     if (!mcpUrl) return;
@@ -63,7 +74,23 @@ export function ClaudeTab() {
         <p className="mt-5 text-xs font-medium text-gray-700">Connect in under a minute</p>
         <ol className="mt-2 space-y-3">
           <Step n={1} title="Copy your personal connector URL">
-            {loadError ? (
+            {!entitled ? (
+              <div className="rounded-md border border-orange-200 bg-orange-50 px-3 py-2.5">
+                <p className="text-xs font-medium text-orange-900">
+                  Your personal connector URL unlocks with Pro.
+                </p>
+                <p className="mt-0.5 text-[11px] text-orange-700">
+                  $9/mo — Claude connector, transcription credits, SMS &amp; more.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setView('pro')}
+                  className="mt-2 rounded-md bg-orange-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-orange-700"
+                >
+                  Unlock with Pro
+                </button>
+              </div>
+            ) : loadError ? (
               <p className="text-xs text-red-600">
                 Couldn’t load your URL — check your connection and reopen this tab.
               </p>

@@ -234,13 +234,16 @@ function AISection({
   if (!BYO_DEEPGRAM_ENABLED) {
     return (
       <Section title="Transcription & Claude">
-        <Toggle
-          label="Call transcription"
-          description="Live transcripts for every call — included, no setup. Metered by credits."
-          checked={managedOn}
-          onChange={(v) => onUpdate({ managedTranscription: v })}
-        />
+        <PaywallGate feature="managed_transcription">
+          <Toggle
+            label="Call transcription"
+            description="Live transcripts for every call — included, no setup. Metered by credits."
+            checked={managedOn}
+            onChange={(v) => onUpdate({ managedTranscription: v })}
+          />
+        </PaywallGate>
         {mcpUrl && (
+          <PaywallGate feature="ai_analysis">
           <div className="border-t border-gray-100 pt-3">
             <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
             <p className="mt-0.5 text-xs text-gray-500">
@@ -261,6 +264,7 @@ function AISection({
               </button>
             </div>
           </div>
+          </PaywallGate>
         )}
       </Section>
     );
@@ -268,12 +272,14 @@ function AISection({
 
   return (
     <Section title="AI & Transcription">
-      <Toggle
-        label="Managed transcription"
-        description="Use our transcription — no Deepgram key needed. Metered by AI credits. Off = bring your own key (free)."
-        checked={managedOn}
-        onChange={(v) => onUpdate({ managedTranscription: v })}
-      />
+      <PaywallGate feature="managed_transcription">
+        <Toggle
+          label="Managed transcription"
+          description="Use our transcription — no Deepgram key needed. Metered by AI credits. Off = bring your own key (free)."
+          checked={managedOn}
+          onChange={(v) => onUpdate({ managedTranscription: v })}
+        />
+      </PaywallGate>
 
       <div className={managedOn ? 'opacity-50' : ''}>
         <label className="block text-xs font-medium text-gray-700">
@@ -315,6 +321,7 @@ function AISection({
       </button>
 
       {mcpUrl && (
+        <PaywallGate feature="ai_analysis">
         <div className="border-t border-gray-100 pt-3">
           <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
           <p className="mt-0.5 text-xs text-gray-500">
@@ -335,6 +342,7 @@ function AISection({
             </button>
           </div>
         </div>
+        </PaywallGate>
       )}
     </Section>
   );
