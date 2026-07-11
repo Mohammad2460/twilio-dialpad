@@ -94,6 +94,31 @@ export async function POST(req: NextRequest) {
   let userId: string;
   if (existing?.id) {
     userId = existing.id;
+    // Trial fairness: the 7-day clock starts at SETUP, not install. If this
+    // user row predates setup (no device ever registered, still trialing,
+    // never subscribed), restart the trial window now — exactly once. Revoked
+    // devices count too, so revoke-and-re-register can't farm fresh trials.
+    try {
+      const { count } = await supabase
+        .from('devices')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      if ((count ?? 0) === 0) {
+        const { data: u } = await supabase
+          .from('users')
+          .select('subscription_status, subscription_id')
+          .eq('id', userId)
+          .single();
+        if (u?.subscription_status === 'trialing' && !u.subscription_id) {
+          await supabase
+            .from('users')
+            .update({ trial_ends_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString() })
+            .eq('id', userId);
+        }
+      }
+    } catch (e) {
+      console.error('[devices/register] trial restart check failed (non-fatal)', e);
+    }
   } else {
     const { data: created, error: createErr } = await supabase
       .from('users')

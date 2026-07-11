@@ -21,3 +21,5 @@ backend/supabase/
 
 # SEO/ASO working docs (local only)
 docs/seo/
+
+.vercel
