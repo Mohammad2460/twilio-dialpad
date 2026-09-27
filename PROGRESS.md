@@ -25,9 +25,8 @@ _Last updated: 2026-09-28._
 ### Pending prod hardening
 Supabase security-advisor findings (DB role grants / view + function settings) pending owner approval. Details kept out of this public repo — run `get_advisors` (security) on the prod project.
 
-### Known cleanup (not done)
-- Orphaned files: `src/sidepanel/components/CreditBalance.tsx`, `SmsTab.tsx`, `src/sidepanel/hooks/use-call-bus.ts`.
-- Prunable stale git worktrees under `~/Desktop/Dialler/.claude/worktrees/` (`git worktree prune`).
+### Known cleanup
+- Backend SMS routes are dormant (UI removed). Delete or revive when SMS strategy is decided.
 - Backend `npm audit`: postcss inside `next@15.5.x` (build-time only; fix = Next 16 major). Not urgent for an API-only backend.
 
 ### Product state
