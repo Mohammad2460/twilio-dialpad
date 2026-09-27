@@ -19,16 +19,17 @@ describe('entitlementsFromSubscription — light trial (paid vs trial)', () => {
     expect(e.can('managed_transcription')).toBe(false);
   });
 
-  it('trialing → managed_transcription only, NOT paid features', () => {
+  // Trial unlocks every feature for 7 days (PR #12; mirrors backend user_has_access).
+  it('trialing → every feature unlocked, but not paid', () => {
     const e = entitlementsFromSubscription(sub({ status: 'trialing', hasAccess: true, daysLeft: 5 }));
     expect(e.trialing).toBe(true);
     expect(e.paid).toBe(false);
     expect(e.daysLeft).toBe(5);
     expect(e.can('managed_transcription')).toBe(true);
-    expect(e.can('sms')).toBe(false);
-    expect(e.can('recording')).toBe(false);
-    expect(e.can('ai_analysis')).toBe(false);
-    expect(e.can('autodial_unlimited')).toBe(false);
+    expect(e.can('sms')).toBe(true);
+    expect(e.can('recording')).toBe(true);
+    expect(e.can('ai_analysis')).toBe(true);
+    expect(e.can('autodial_unlimited')).toBe(true);
   });
 
   it('active → paid, all features incl managed_transcription', () => {
