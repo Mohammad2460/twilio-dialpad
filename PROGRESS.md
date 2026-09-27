@@ -9,7 +9,7 @@ _Last updated: 2026-09-28._
 ### Why the product "died" (root cause, 2026-09-28 audit)
 - The Chrome Web Store build was **v1.2.0 from 2026-06-06** — built before device auth (PR #3) and everything after it. `package.json` was never bumped, so all later work shipped to `main` but never to the store.
 - v1.2.0 authenticates with `Bearer <userId>`. The backend accepts that only until `LEGACY_AUTH_UNTIL` (default `2026-07-31`, `backend/lib/auth.ts`). Since 2026-08-01 every store install gets 401 on subscription / credits / call sync / Pro features. Calling itself still worked (legacy per-user Twilio Function).
-- At audit: 54 users, 53 without a registered device (= locked out). 22 installs in the prior 60 days. No Vercel runtime errors; Supabase `ACTIVE_HEALTHY`.
+- At audit, nearly every user was on the legacy path (= locked out). No Vercel runtime errors; Supabase healthy.
 
 ### v1.3.0 — what changed
 - **`ReconnectBanner`** (`src/sidepanel/components/ReconnectBanner.tsx`): pinned app-wide for any install without a device secret. Inline Twilio Auth Token field → `registerDevice()` (token verified with Twilio, discarded) → reload. Backend dedups by Account SID, so the same user / trial / subscription carries over. Replaces the buried Settings "Secure this device" card (`window.prompt`).
@@ -20,10 +20,10 @@ _Last updated: 2026-09-28._
 - [ ] Manual upgrade test: install the 1.2.0 zip unpacked → open → load unpacked `dist/` over it → banner shows → reconnect → credits / Pro tab load.
 - [ ] Merge PR → Vercel auto-deploys backend.
 - [ ] `pnpm build`, zip `dist/`, upload to the Chrome Web Store.
-- [ ] Optional stopgap until store approval: Vercel env `LEGACY_AUTH_UNTIL=<date>` re-opens bare-userId auth for v1.2.0 installs. Trade-off: a known userId acts as a bearer token until then. Remove after rollout.
+- [ ] Optional stopgap until store approval: Vercel env `LEGACY_AUTH_UNTIL=<date>` re-opens bare-userId auth for v1.2.0 installs. Weaker auth while open — keep the window short, remove after rollout.
 
-### Pending prod hardening (needs owner approval — prod DB change)
-Supabase advisors flagged: 8 `SECURITY DEFINER` telemetry/debug views (`v_*`) readable by `anon` (ERROR), 13 functions with mutable `search_path`, duplicate index `users_email`/`users_email_idx`. `anon`/`authenticated` hold full grants on every public table. Only the backend touches the DB, and it uses service_role → safe fix: views `security_invoker = true`, revoke all from `anon`/`authenticated`, pin `search_path`, drop duplicate index.
+### Pending prod hardening
+Supabase security-advisor findings (DB role grants / view + function settings) pending owner approval. Details kept out of this public repo — run `get_advisors` (security) on the prod project.
 
 ### Known cleanup (not done)
 - Orphaned files: `src/sidepanel/components/CreditBalance.tsx`, `SmsTab.tsx`, `src/sidepanel/hooks/use-call-bus.ts`.
