@@ -197,6 +197,8 @@ class TranscriptionController {
             console.log('[transcription] managed stopped:', reason);
             if (reason === 'insufficient_credits') {
               _transcriptErrorCb?.(new Error('Transcription paused — out of credits.'));
+            } else if (reason === 'trial_limit') {
+              _transcriptErrorCb?.(new Error('Daily free-trial transcription limit reached — resets within 24h, or upgrade to Pro.'));
             } else if (reason === 'unavailable') {
               _transcriptErrorCb?.(new Error('Managed transcription unavailable.'));
             } else if (reason === 'error') {

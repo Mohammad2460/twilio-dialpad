@@ -26,6 +26,14 @@ async function run(req: NextRequest) {
     p_minutes: 30,
   });
   if (reapErr) console.error('[credits/expire] reap failed (non-fatal)', reapErr);
+
+  // Prune trial-cap rows past the 24h window (see lib/trial-cap.ts). Non-fatal.
+  const { error: pruneErr } = await supabase
+    .from('trial_transcribe_mints')
+    .delete()
+    .lt('minted_at', new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString());
+  if (pruneErr) console.error('[credits/expire] trial-cap prune failed (non-fatal)', pruneErr.message);
+
   return NextResponse.json({ ok: true, expired: expired ?? 0, reaped: reaped ?? 0 });
 }
 
