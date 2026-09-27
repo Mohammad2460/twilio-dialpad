@@ -11,6 +11,21 @@ function authHeader(sid: string, token: string): string {
   return 'Basic ' + btoa(`${sid}:${token}`);
 }
 
+// `credentials: 'omit'` on every Twilio call: Twilio answers bad credentials with
+// 401 + `WWW-Authenticate: Basic`, and from an extension page Chrome turns that
+// into its native "Sign in" dialog. Omitting credentials suppresses the prompt,
+// so our own error message is shown instead. Auth still travels in the header.
+const NO_PROMPT: RequestInit = { credentials: 'omit' };
+
+function twilioError(prefix: string, status: number, text: string): Error {
+  if (status === 401) {
+    return new Error(
+      'Twilio rejected these credentials. Re-copy the Account SID and Auth Token from console.twilio.com (live credentials, not test).',
+    );
+  }
+  return new Error(`${prefix} ${status}: ${text}`);
+}
+
 async function twilioFetch<T>(
   path: string,
   sid: string,
@@ -28,10 +43,10 @@ async function twilioFetch<T>(
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
     body = new URLSearchParams(form).toString();
   }
-  const res = await fetch(`${API}${path}`, { ...rest, headers, body });
+  const res = await fetch(`${API}${path}`, { ...NO_PROMPT, ...rest, headers, body });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Twilio ${res.status}: ${text || res.statusText}`);
+    throw twilioError('Twilio', res.status, text || res.statusText);
   }
   return res.json() as Promise<T>;
 }
@@ -152,10 +167,10 @@ async function slsFetch<T>(
     headers['Content-Type'] = 'application/x-www-form-urlencoded';
     body = new URLSearchParams(form).toString();
   }
-  const res = await fetch(`${baseUrl}${path}`, { ...rest, headers, body });
+  const res = await fetch(`${baseUrl}${path}`, { ...NO_PROMPT, ...rest, headers, body });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`Serverless ${res.status}: ${text || res.statusText}`);
+    throw twilioError('Serverless', res.status, text || res.statusText);
   }
   return res.json() as Promise<T>;
 }
@@ -219,6 +234,7 @@ export const serverless = {
     const res = await fetch(
       `${SLS_UPLOAD}/Services/${serviceSid}/Functions/${functionSid}/Versions`,
       {
+        ...NO_PROMPT,
         method: 'POST',
         headers: { Authorization: 'Basic ' + btoa(`${sid}:${token}`) },
         body,
@@ -254,6 +270,7 @@ export const serverless = {
     const params = new URLSearchParams();
     functionVersionSids.forEach((v) => params.append('FunctionVersions', v));
     const res = await fetch(`${SLS}/Services/${serviceSid}/Builds`, {
+      ...NO_PROMPT,
       method: 'POST',
       headers: {
         Authorization: 'Basic ' + btoa(`${sid}:${token}`),
