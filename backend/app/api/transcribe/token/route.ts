@@ -3,6 +3,7 @@ import { corsHeaders } from '@/lib/cors';
 import { authenticate } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { mintDeepgramToken } from '@/lib/deepgram-token';
+import { takeTrialMint } from '@/lib/trial-cap';
 import {
   getActivePricing,
   estimateTranscriptionCredits,
@@ -70,6 +71,11 @@ export async function POST(req: NextRequest) {
         402,
       );
     }
+  }
+
+  // Free trial transcription is capped per rolling 24h (abuse guard on our key).
+  if (trialing && !(await takeTrialMint(supabase, userId))) {
+    return j({ error: 'trial_transcription_cap' }, 402);
   }
 
   let body: TokenBody;

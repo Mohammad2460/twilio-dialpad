@@ -34,7 +34,7 @@ export interface ManagedTranscriptionOptions {
   startedAt: number;
   model?: string;
   onSegment: (seg: TranscriptSegment) => void;
-  /** Terminal stop. reason: 'insufficient_credits' | 'unavailable' | 'error'. */
+  /** Terminal stop. reason: 'insufficient_credits' | 'trial_limit' | 'unavailable' | 'error'. */
   onStopped?: (reason: string) => void;
 }
 
@@ -99,7 +99,10 @@ export class ManagedTranscription {
     }
 
     if (resp.status === 402) {
-      this.finish('insufficient_credits'); // terminal — never retry
+      // Terminal — never retry. The trial daily cap is reported separately so the
+      // user isn't told they're "out of credits" while on a free trial.
+      const err = (await resp.json().catch(() => ({}))) as { error?: string };
+      this.finish(err.error === 'trial_transcription_cap' ? 'trial_limit' : 'insufficient_credits');
       return;
     }
     if (resp.status === 503) {
