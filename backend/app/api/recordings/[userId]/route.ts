@@ -16,9 +16,9 @@ function j(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: corsHeaders });
 }
 
-/** Paid gate — recording is a paid feature, NOT included in the trial. */
+/** Pro gate — trial or paid (trial unlocks every feature; mirrors client entitlements). */
 async function requireAccess(userId: string): Promise<boolean> {
-  const { data } = await supabase.rpc('user_is_paid', { uid: userId });
+  const { data } = await supabase.rpc('user_has_access', { uid: userId });
   return !!data;
 }
 

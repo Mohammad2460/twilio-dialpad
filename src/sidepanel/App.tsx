@@ -17,6 +17,7 @@ import { ClaudeTab } from './components/ClaudeTab';
 import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 import { TrialStartPopup } from './components/TrialStartPopup';
 import { TrialBanner } from './components/TrialBanner';
+import { ReconnectBanner } from './components/ReconnectBanner';
 import { getEntitlements, type Entitlements } from '@shared/entitlements';
 
 export function App() {
@@ -59,6 +60,7 @@ export function App() {
   return (
     <div className="flex h-full flex-col bg-white">
       <StatusBar />
+      <ReconnectBanner settings={settings} />
       <FolderPermissionBanner />
       <TrialStartPopup />
       {showTrialBanner && <TrialBanner userId={cloudUserId} daysLeft={ent.daysLeft!} />}
