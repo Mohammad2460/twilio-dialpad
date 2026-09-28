@@ -23,7 +23,7 @@ _Last updated: 2026-09-29._
 
 ## Release status
 - [x] Store package built, audited (manifest, permissions diff, no secrets/dev URLs/remote code), submitted.
-- [ ] **Privacy policy page** — PR #19 serves it at `https://dialler-mcp.vercel.app/privacy`; must be merged for the store listing link to work.
+- [x] **Privacy policy** — canonical at https://gist.github.com/Mohammad2460/6128f0a32c01d6249bae87f013cf2707 (the URL in the store listing), rewritten 2026-09-29 to match 1.3.0. Update it whenever data handling changes.
 - [ ] After approval: install from the store on a clean profile; check setup screen + side panel.
 - [ ] Real call test needs a working Twilio account (owner's Twilio account is suspended; a free Twilio trial on another email works).
 
