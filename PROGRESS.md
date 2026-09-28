@@ -1,39 +1,50 @@
 # PROGRESS — Twilio Dialpad
 
 > Current state only. History lives in git (`git log`) and merged PRs — don't re-grow a changelog here.
+> **Plan of record:** [`docs/strategy/relaunch-plan.md`](docs/strategy/relaunch-plan.md) (AI assistant, pricing, growth, distribution, 2.0 roadmap).
 
-_Last updated: 2026-09-28._
+_Last updated: 2026-09-29._
 
-## Status: v1.3.0 revival (branch `claude/extension-revival-audit-8e92b8`)
+## Status
+- **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
+- **Next: AI assistant v1** (item 1 in the relaunch plan) → quiet 1.4 → … → **2.0 relaunch**.
 
-### Why the product "died" (root cause, 2026-09-28 audit)
-- The Chrome Web Store build was **v1.2.0 from 2026-06-06** — built before device auth (PR #3) and everything after it. `package.json` was never bumped, so all later work shipped to `main` but never to the store.
-- v1.2.0 authenticates with `Bearer <userId>`. The backend accepts that only until `LEGACY_AUTH_UNTIL` (default `2026-07-31`, `backend/lib/auth.ts`). Since 2026-08-01 every store install gets 401 on subscription / credits / call sync / Pro features. Calling itself still worked (legacy per-user Twilio Function).
-- At audit, nearly every user was on the legacy path (= locked out). No Vercel runtime errors; Supabase healthy.
+## Why the product "died" (2026-09-28 audit)
+- The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.
+- v1.2.0 authenticates with `Bearer <userId>`; the backend stopped accepting that at `LEGACY_AUTH_UNTIL` (2026-07-31) → every store install 401'd on subscription/credits/sync/Pro since 2026-08-01.
 
-### v1.3.0 — what changed
-- **`ReconnectBanner`** (`src/sidepanel/components/ReconnectBanner.tsx`): pinned app-wide for any install without a device secret. Inline Twilio Auth Token field → `registerDevice()` (token verified with Twilio, discarded) → reload. Backend dedups by Account SID, so the same user / trial / subscription carries over. Replaces the buried Settings "Secure this device" card (`window.prompt`).
-- **Trial = every feature, end to end.** PR #12 changed the client (`entitlements.can()` = paid || trialing) but the backend `recordings` + `sms` routes still required `user_is_paid` → trial users recorded calls they could never list (402). Both now use `user_has_access`. The AI-chat Claude-model gate stays on `user_is_paid` (protects Anthropic spend; AI chat is hidden anyway).
-- Stale entitlements test updated to the trial-unlocks-all rule. Version → 1.3.0.
+## What 1.3.0 contains
+- **`ReconnectBanner`** — app-wide banner for installs without a device secret; inline Auth Token → `registerDevice()` → reload. Backend dedups by Account SID, so user/trial/subscription carry over.
+- **Trial = every feature end to end** — backend `recordings` + `sms` gates use `user_has_access`. The Claude-model AI gate stays paid-only.
+- **Trial transcription cap** — ~4 h/day of free managed transcription per user (`backend/lib/trial-cap.ts`, env `TRIAL_TRANSCRIBE_MINTS_PER_DAY`, table `trial_transcribe_mints`, pruned by the daily cron).
+- **Readable device errors** — `src/shared/device-error.ts` maps Twilio errors to plain English (was the literal "undefined").
+- **Permissions** — removed unused `identity`/`identity.email` (would have disabled the extension on update). Only `scripting` (no warning) + optional site access added vs 1.2.0.
+- `@twilio/voice-sdk` 2.18.5.
 
-### Release checklist (1.3.0)
-- [ ] Manual upgrade test: install the 1.2.0 zip unpacked → open → load unpacked `dist/` over it → banner shows → reconnect → credits / Pro tab load.
-- [ ] Merge PR → Vercel auto-deploys backend.
-- [ ] `pnpm build`, zip `dist/`, upload to the Chrome Web Store.
-- [ ] Optional stopgap until store approval: Vercel env `LEGACY_AUTH_UNTIL=<date>` re-opens bare-userId auth for v1.2.0 installs. Weaker auth while open — keep the window short, remove after rollout.
+## Release status
+- [x] Store package built, audited (manifest, permissions diff, no secrets/dev URLs/remote code), submitted.
+- [ ] **Privacy policy page** — PR #19 serves it at `https://dialler-mcp.vercel.app/privacy`; must be merged for the store listing link to work.
+- [ ] After approval: install from the store on a clean profile; check setup screen + side panel.
+- [ ] Real call test needs a working Twilio account (owner's Twilio account is suspended; a free Twilio trial on another email works).
 
-### Pending prod hardening
-Supabase security-advisor findings (DB role grants / view + function settings) pending owner approval. Details kept out of this public repo — run `get_advisors` (security) on the prod project.
+## Owner dev access (no Twilio needed)
+Owner logs in to their real account via a manually created device row (label `dev-login (manual)`) + a console snippet setting `settings`/`cloudUserId`/`cloudDeviceId`/`cloudDeviceSecret`. Owner's own user row set to `trialing` for 90 days (their row only; not Dodo). Revoke: `update public.devices set revoked_at = now() where label = 'dev-login (manual)';`. The red "Error" status is expected while the Twilio account is suspended.
 
-### Known cleanup
-- Backend SMS routes are dormant (UI removed). Delete or revive when SMS strategy is decided.
-- Backend `npm audit`: postcss inside `next@15.5.x` (build-time only; fix = Next 16 major). Not urgent for an API-only backend.
+## Product state
+- Calls: BYO-Twilio. New installs = backend-hosted voice (`/api/voice/token`, `/api/voice/twiml`); ≤1.2.0 installs = legacy per-user Twilio Function (Twilio's Node 22 default applies to any rebuild; deployed Functions keep running).
+- Hidden via `src/shared/flags.ts`: in-extension AI chat (`AI_CHAT_ENABLED`), BYO Deepgram. SMS UI removed (backend routes dormant).
+- Live: dialer, history, auto-dialer (CSV, 100 cap), recording, managed transcription, Claude MCP connector (`/api/mcp/[userId]`), Pro $9/mo + 7-day trial via Dodo (new pricing in the plan is not built yet).
+- Prod DB: `anon`/`authenticated` roles have no grants (only the backend's service role touches the DB); telemetry views are `security_invoker`.
 
-### Product state
-- Calls: BYO-Twilio. New installs = backend-hosted voice (`/api/voice/token`, `/api/voice/twiml`); ≤1.2.0 installs = legacy per-user Twilio Function.
-- Hidden via `src/shared/flags.ts`: in-extension AI chat, BYO Deepgram. SMS UI removed (backend routes dormant).
-- Live: dialer, call history, auto-dialer (CSV, 100 cap), recording, managed transcription (credits; free during trial), Claude MCP connector (`/api/mcp/[userId]`), Pro $9/mo + 7-day trial via Dodo.
-- Owner action outstanding: fund the Anthropic account (Claude models fail gracefully until then).
+## Known follow-ups (not blocking)
+- Claude connector URL uses the userId as its only credential — consider a separate, rotatable MCP token.
+- Consider migrating legacy (Twilio Function) users to backend voice on reconnect — needs a real call test first.
+- 13 DB functions still have a mutable `search_path` (low-priority Supabase advisor warning).
+- Backend SMS routes dormant; `/api/users` is a deprecated anonymous-user endpoint kept for old builds.
+- Backend `npm audit`: postcss inside `next@15.5.x` (build-time only; fix = Next 16).
+- Owner action: fund the Anthropic account before offering Claude models.
 
-### Next bet (planned, not built)
-AI over call history: auto-load recent transcripts into general-mode chat (gpt-5-mini, all tiers, credit-metered), then a tool-use loop over the MCP queries. Sell Pro on model quality + credit bucket, not access.
+## Working rules
+- **Never touch Dodo or customer-payment code/data.** Owner creates Dodo products/prices.
+- **The repo is public** — keep security specifics and user data out of commits, PRs and docs.
+- Prod DB changes: Claude writes the SQL; the owner runs it in the Supabase SQL editor.
