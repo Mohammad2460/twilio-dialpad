@@ -1,4 +1,5 @@
 import { Device, type Call } from '@twilio/voice-sdk';
+import { describeDeviceError } from '@shared/device-error';
 import { sendMsg } from '@shared/messaging';
 import type { Settings, TranscriptSegment } from '@shared/types';
 import { mixToStereo, type MixedStream } from '@shared/audio-mixer';
@@ -335,8 +336,7 @@ export class DeviceManager {
       this.retryAttempt = 0;
       this.scheduleRefresh();
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      emitDeviceState('error', msg);
+      emitDeviceState('error', describeDeviceError(e));
       this.scheduleRetry();
     }
   }
@@ -345,8 +345,8 @@ export class DeviceManager {
     const d = this.device!;
     d.on('registered', () => emitDeviceState('registered'));
     d.on('unregistered', () => emitDeviceState('offline'));
-    d.on('error', (err: { message?: string; code?: number }) => {
-      emitDeviceState('error', `${err.code ?? ''} ${err.message ?? 'unknown'}`.trim());
+    d.on('error', (err: unknown) => {
+      emitDeviceState('error', describeDeviceError(err));
     });
     d.on('tokenWillExpire', () => {
       this.refreshToken().catch((e) => console.error('Token refresh failed', e));
@@ -462,7 +462,7 @@ export class DeviceManager {
       this.device.updateToken(token);
       this.scheduleRefresh();
     } catch (e) {
-      emitDeviceState('error', 'Token refresh failed: ' + (e instanceof Error ? e.message : String(e)));
+      emitDeviceState('error', 'Token refresh failed: ' + describeDeviceError(e));
     }
   }
 
