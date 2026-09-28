@@ -2,6 +2,10 @@
 
 _Agreed with the owner on 2026-09-28/29. This is the working plan; build it one item at a time. Keep it current as decisions change._
 
+> **Email consent rule (applies to every email idea below):** the setup email is required for the account and for service messages only. Marketing, nurture, weekly-digest, win-back and launch emails go **only to users who explicitly opted in** (`marketing_consent_at` set; opt-in is separate and default-OFF per `CLAUDE.md`). The current `SetupForm` sends no `marketingConsent`, so an opt-in checkbox (unticked by default) must be added before any marketing email ships.
+
+> **SEO research docs:** `docs/seo/` is intentionally gitignored (local working docs on the owner's machine), so the `docs/seo/…` paths below are not in the repo. Ask the owner for them, or redo the research.
+
 ## Where we are
 - **1.3.0** submitted to the Chrome Web Store 2026-09-29 (quiet fix release: reconnect banner for locked-out 1.2.0 installs, readable device errors, trial transcription cap, permission cleanup). No marketing.
 - Treat the product as **zero users**: no email list, no active customers worth protecting (one legacy $9 Dodo subscription exists — owner decides; never touch it).
@@ -50,7 +54,7 @@ Only **transcription** has real marginal cost (~$0.46/hr Deepgram) — plus AI q
 1. Try-before-setup **demo tour** — sample calls, transcript and an AI answer before asking for Twilio creds.
 2. **"No Twilio account? Get one in 3 minutes"** guide at the creds step (signup link, where SID/token live, buying a number, cost line "~$1.15/mo per number + ~1.4¢/min to Twilio", 60-sec video).
 3. **Trust copy** at the creds step: token verified once, never stored; open source (public GitHub) link.
-4. **Email before creds** ("send me the setup guide") so leavers can be followed up.
+4. **Email before creds** ("send me the setup guide") so leavers can be followed up — with a separate, unticked marketing opt-in; follow-ups go only to opted-in addresses (see the consent rule above).
 5. First-week **checklist**: first call · import CSV · turn on transcription · ask the AI.
 
 **Retention:**
@@ -58,26 +62,26 @@ Only **transcription** has real marginal cost (~$0.46/hr Deepgram) — plus AI q
 7. **Post-call card**: duration, "transcript ready → Ask AI", per-number notes.
 8. **Click-to-call everywhere** (bubble on Gmail/HubSpot/LinkedIn) promoted in onboarding.
 9. **Missed-call loop**: notification + one-tap call back + reminders.
-10. **Weekly "your week in calls"** email + in-panel stats.
+10. **Weekly "your week in calls"** email (opted-in users only) + in-panel stats (everyone).
 11. **Trial-end value recap** (billing copy only — owner approves).
 
 **Acquisition:**
-12. **Store listing rewrite** — ready in `docs/seo/07-cws-listing-rewrite.md`; benefit screenshots + 30-sec video. Store impressions fell 213 → 19/day.
+12. **Store listing rewrite** — draft in the owner's local `docs/seo/07-cws-listing-rewrite.md` (not in repo); benefit screenshots + 30-sec video. Store impressions fell 213 → 19/day.
 13. **In-app review prompt after the 10th successful call.** ⚠️ Never reward reviews (Chrome Web Store policy).
-14. **Competitor angle:** Twilio Softphone "free" then pay-per-dial; Auto Dialer for Twilio 3.6★ (crashes/billing). See `docs/seo/02-competitor-analysis.md`.
+14. **Competitor angle:** Twilio Softphone "free" then pay-per-dial; Auto Dialer for Twilio 3.6★ (crashes/billing). Details in the owner's local `docs/seo/02-competitor-analysis.md` (not in repo).
 15. **Claude/MCP hook:** MCP directories (mcp.so, Smithery, Glama, PulseMCP, awesome-mcp-servers), r/ClaudeAI, Product Hunt.
-16. **Landing page + SEO:** home, pricing, setup guide, comparison pages, later "Twilio dialer for HubSpot/Gmail/Salesforce". AI-search plan: `docs/seo/08-ai-visibility-strategy.md`. Public GitHub README as a trust/SEO asset.
+16. **Landing page + SEO:** home, pricing, setup guide, comparison pages, later "Twilio dialer for HubSpot/Gmail/Salesforce". AI-search plan: owner's local `docs/seo/08-ai-visibility-strategy.md` (not in repo). Public GitHub README as a trust/SEO asset.
 17. **Communities:** r/twilio, r/sales, r/coldcalling, r/SaaS, r/smallbusiness, IndieHackers, Twilio forums — help 5×, mention 1×; follow each subreddit's rules.
 18. **Referral credits** ("give 5 AI hours, get 5").
 
 **Win-back:**
-19. Email locked-out users once 1.3.0 is live — _owner says there are effectively no usable emails; skip unless that changes._
+19. Email locked-out users once 1.3.0 is live — only those who opted in to marketing; _owner says there are effectively no usable emails, so skip unless that changes._
 
 ## 4. Distribution system (from zero)
 - **Audience rings:** (1) already on Twilio — easiest, win first; (2) AI/Claude users — launch buzz; (3) salespeople who cold-call — biggest, pays, needs the Twilio guide + demo mode.
-- **Everything ends in:** install + email (email is already mandatory at setup → the owned list).
+- **Everything ends in:** install + account email. The **owned marketing list = users who tick the opt-in** (separate, default-OFF); the required setup email alone is not a marketing list.
 - **Channels by payoff:** #1 Chrome Web Store (listing, reviews, frequent updates) · #2 **founding 50 users** onboarded 1:1 ("3 months Pro free for a 15-min setup call"; ask for an honest review afterwards, never tied to the reward) · #3 YouTube tutorials · #4 landing page + SEO + GitHub · #5 MCP/AI channels · #6 communities · #7 launch sites (Product Hunt, Show HN, AlternativeTo, SaaSHub, BetaList, IndieHackers) · #8 in-product loops ("Summarized by Twilio Dialpad" footer, referrals) · #9 small, personal, compliant outreach (≤20/day).
-- **8-week timeline:** wk 1–2 foundations (listing, landing page, setup video, review prompt, tracking) · wk 3–5 founding 50 + Reddit + first 2 videos · wk 6 AI v1 + demo · wk 7–8 **2.0 launch week** (PH + Show HN + MCP directories + r/ClaudeAI + comparison pages + email list) · then "launch again" monthly with each real feature.
+- **8-week timeline:** wk 1–2 foundations (listing, landing page, setup video, review prompt, tracking) · wk 3–5 founding 50 + Reddit + first 2 videos · wk 6 AI v1 + demo · wk 7–8 **2.0 launch week** (PH + Show HN + MCP directories + r/ClaudeAI + comparison pages + email to opted-in users) · then "launch again" monthly with each real feature.
 - **Weekly routine (~8–10 h):** daily 20-min community answers; Mon metrics; Tue founding-user calls; Wed one content piece; Thu outreach/directories; Fri ship → store update + changelog. Drop any channel with <10 installs after 4 weeks.
-- **90-day targets:** store impressions 19 → 300+/day; 500+ installs; 40+ reviews at 4.5★+; 100+ weekly active callers; 20–30 Pro; 300+ emails. North-star: **weekly active callers**.
+- **90-day targets:** store impressions 19 → 300+/day; 500+ installs; 40+ reviews at 4.5★+; 100+ weekly active callers; 20–30 Pro; 300+ opted-in emails. North-star: **weekly active callers**.
 - **Skills per channel:** copywriting / page-cro (listing, site) · competitor-alternatives · programmatic-seo · ai-seo · social-content · email-sequence · cold-email · referral-program · last30days (research).
