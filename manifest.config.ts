@@ -7,7 +7,7 @@ export default defineManifest({
   version: pkg.version,
   description: 'Browser-based Twilio dialpad — make and receive calls without a phone.',
   minimum_chrome_version: '116',
-  permissions: ['storage', 'sidePanel', 'notifications', 'clipboardRead', 'tabs', 'identity', 'identity.email', 'scripting'],
+  permissions: ['storage', 'sidePanel', 'notifications', 'clipboardRead', 'tabs', 'scripting'],
   // Broad page access is OPTIONAL — requested at runtime only when the user
   // enables the floating bubble, then the content script is registered via
   // chrome.scripting.registerContentScripts. No broad install-time warning.
