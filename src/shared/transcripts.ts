@@ -9,7 +9,7 @@
  * Why no `idb` package?
  *   Raw IndexedDB API works fine for our small surface. Avoids extra dependency.
  */
-import type { Transcript, TranscriptSegment, ContactInfo, CallDirection } from './types';
+import type { Transcript, TranscriptMeta, TranscriptSegment, ContactInfo, CallDirection } from './types';
 
 const DB_NAME = 'twilio-dialer';
 const DB_VERSION = 1;
@@ -86,6 +86,35 @@ export const transcripts = {
         c.continue();
       };
       cur.onerror = () => reject(cur.error);
+    });
+  },
+
+  /** Like list(), minus segment bodies — for views that only need call meta + insight. */
+  async listMeta(limit = 200): Promise<TranscriptMeta[]> {
+    const all = await this.list(limit);
+    return all.map(({ segments: _segments, ...meta }) => meta);
+  },
+
+  /**
+   * Read-modify-write one transcript inside a single transaction, so a late
+   * insight write can never clobber (or be clobbered by) another update.
+   * Returns the stored record, or null when the transcript no longer exists.
+   */
+  async update(callSid: string, patch: (t: Transcript) => Transcript): Promise<Transcript | null> {
+    const db = await openDb();
+    const t1 = tx(db, 'readwrite', TRANSCRIPTS_STORE);
+    const store = t1.objectStore(TRANSCRIPTS_STORE);
+    return new Promise((resolve, reject) => {
+      let result: Transcript | null = null;
+      const getReq = store.get(callSid) as IDBRequest<Transcript | undefined>;
+      getReq.onsuccess = () => {
+        if (!getReq.result) return;
+        result = patch(getReq.result);
+        store.put(result);
+      };
+      t1.oncomplete = () => resolve(result);
+      t1.onerror = () => reject(t1.error);
+      t1.onabort = () => reject(t1.error);
     });
   },
 

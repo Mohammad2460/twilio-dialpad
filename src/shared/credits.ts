@@ -65,8 +65,12 @@ export type ChatEvent =
   | { type: 'done'; credits: number; balance: number }
   | { type: 'error'; error: string; balance?: number; status?: number };
 
+/** The one model the assistant uses for now (Claude models return with paid tiers). */
+export const AI_MODEL = 'gpt-5-mini';
+
 /**
- * Stream a managed-Claude answer over a call transcript.
+ * Stream a managed-AI answer — over one call transcript (`mode: 'call'`), over
+ * the multi-call digest (`mode: 'calls'` + `context`), or as open chat.
  * Yields delta/done/error events. On 402 (insufficient credits / pro required)
  * yields a single error event carrying the HTTP status so the UI can upsell.
  */
@@ -75,9 +79,11 @@ export async function* streamChat(
   opts: {
     model: string;
     transcript?: string;
+    /** Call digest from buildCallDigest(); used with mode 'calls'. */
+    context?: string;
     messages: ChatTurn[];
     idempotencyKey?: string;
-    mode?: 'call' | 'general';
+    mode?: 'call' | 'general' | 'calls';
     /** Abort the request (e.g. component unmount) to stop streaming + billing. */
     signal?: AbortSignal;
   },
@@ -135,5 +141,36 @@ export async function* streamChat(
       else if (event === 'error')
         yield { type: 'error', error: String(data.error ?? 'error'), balance: data.balance as number | undefined };
     }
+  }
+}
+
+export type InsightResponse =
+  | { ok: true; insight: unknown; model: string }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Ask the backend for structured notes on one call (summary, objections,
+ * promises, next step). Metered server-side; 402 means out of credits.
+ * Never throws — network failures come back as `{ ok: false, status: 0 }`.
+ */
+export async function requestInsight(
+  userId: string,
+  body: { transcript: string; callDate: string; direction?: 'in' | 'out'; contactName?: string },
+): Promise<InsightResponse> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/ai/summarize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: await authHeader(userId) },
+      body: JSON.stringify(body),
+    });
+    const data = (await res.json().catch(() => ({}))) as {
+      insight?: unknown;
+      model?: string;
+      error?: string;
+    };
+    if (!res.ok) return { ok: false, status: res.status, error: data.error ?? 'request_failed' };
+    return { ok: true, insight: data.insight, model: data.model ?? AI_MODEL };
+  } catch {
+    return { ok: false, status: 0, error: 'network' };
   }
 }
