@@ -212,14 +212,3 @@ export function sanitizeTurns(messages: unknown): ChatTurn[] {
   while (recent.length > 0 && recent[0].role !== 'user') recent.shift();
   return recent;
 }
-
-/**
- * Ledger key for one vendor call. Always unique: every vendor call must own its
- * reservation so it is settled against its own real usage. The client-supplied
- * key is kept only as a trace prefix.
- */
-export function reservationKey(scope: string, clientKey?: unknown): string {
-  const trace =
-    typeof clientKey === 'string' ? clientKey.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 48) : '';
-  return trace ? `${scope}:${trace}:${crypto.randomUUID()}` : `${scope}:${crypto.randomUUID()}`;
-}

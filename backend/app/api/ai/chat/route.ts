@@ -20,7 +20,8 @@ import {
   type AnthropicUsage,
   type OpenAiUsage,
 } from '@/lib/credits';
-import { chatSystemPrompt, sanitizeTurns, reservationKey, type ChatMode } from '@/lib/ai-prompts';
+import { chatSystemPrompt, sanitizeTurns, type ChatMode } from '@/lib/ai-prompts';
+import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
 

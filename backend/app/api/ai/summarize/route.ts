@@ -20,8 +20,8 @@ import {
   insightSystemPrompt,
   insightUserPrompt,
   parseInsight,
-  reservationKey,
 } from '@/lib/ai-prompts';
+import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;

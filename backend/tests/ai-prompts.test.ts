@@ -4,7 +4,6 @@ import {
   insightUserPrompt,
   parseInsight,
   sanitizeTurns,
-  reservationKey,
   INSIGHT_JSON_SCHEMA,
   MAX_CHAT_TURNS,
 } from '../lib/ai-prompts';
@@ -137,22 +136,5 @@ describe('sanitizeTurns', () => {
   it('returns [] for non-arrays', () => {
     expect(sanitizeTurns(undefined)).toEqual([]);
     expect(sanitizeTurns('x')).toEqual([]);
-  });
-});
-
-describe('reservationKey', () => {
-  it('is unique per call even for the same client key', () => {
-    const a = reservationKey('chat', 'abc');
-    const b = reservationKey('chat', 'abc');
-    expect(a).not.toBe(b);
-    expect(a.startsWith('chat:abc:')).toBe(true);
-  });
-
-  it('ignores unusable client keys', () => {
-    expect(reservationKey('insight', undefined)).toMatch(/^insight:[0-9a-f-]{36}$/);
-    expect(reservationKey('insight', { x: 1 })).toMatch(/^insight:[0-9a-f-]{36}$/);
-    const long = reservationKey('insight', 'x'.repeat(500) + ' ;drop');
-    expect(long.length).toBeLessThan(120);
-    expect(long).not.toContain(' ');
   });
 });
