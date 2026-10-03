@@ -19,6 +19,11 @@ export const WINDOW_SECONDS = 120;
  *  for time it did not stream. */
 export const SETTLE_GRACE_SECONDS = 5;
 
+/** How long after it was reserved a window may be handed to the same client
+ *  again. Covers the client's one retry of a failed open (it re-sends the same
+ *  window label within about a second) without taking a second hold. */
+export const RETRY_REUSE_SECONDS = 30;
+
 /** Reservations made by /api/transcribe/token carry this model prefix. */
 export const TRANSCRIBE_MODEL_PREFIX = 'deepgram:';
 
@@ -45,6 +50,35 @@ export function settleableModel(row: ReservationRow | null | undefined, userId: 
   if (!row || row.user_id !== userId || row.status !== 'pending') return null;
   if (typeof row.model !== 'string' || !row.model.startsWith(TRANSCRIBE_MODEL_PREFIX)) return null;
   return row.model.slice(TRANSCRIBE_MODEL_PREFIX.length) || null;
+}
+
+/** The ledger columns a retry-reuse decision needs. */
+export interface PendingWindowRow {
+  request_id: string;
+  idempotency_key: string | null;
+  created_at: string;
+}
+
+/**
+ * The request id of the window a retry should reuse: among the caller's own
+ * pending windows (newest first), the first one reserved under this exact
+ * window label within the reuse period. Otherwise null — reserve a new one.
+ */
+export function reusableWindow(
+  rows: PendingWindowRow[] | null | undefined,
+  keyPrefix: string | null,
+  nowMs: number,
+  reuseSeconds = RETRY_REUSE_SECONDS,
+): string | null {
+  if (!keyPrefix || !rows) return null;
+  for (const row of rows) {
+    const key = row.idempotency_key;
+    if (typeof key !== 'string' || !key.startsWith(keyPrefix)) continue;
+    if (!isUuid(key.slice(keyPrefix.length)) || !isUuid(row.request_id)) continue;
+    const ageMs = nowMs - Date.parse(row.created_at);
+    if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs <= reuseSeconds * 1000) return row.request_id;
+  }
+  return null;
 }
 
 /**

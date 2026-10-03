@@ -1,19 +1,56 @@
 /**
- * Settle one managed-transcription window. Shared by /api/transcribe/token
- * (settles the previous window) and /api/transcribe/settle (the final one).
+ * Ledger access for managed-transcription windows: settling one (shared by
+ * /api/transcribe/token for the previous window and /api/transcribe/settle for
+ * the final one) and finding the window a client retry should reuse.
  *
- * The request id and seconds arrive from the client, so both are checked
- * against the ledger row before anything is settled — see transcribe-metering.ts.
+ * The request id, seconds and window label arrive from the client, so each is
+ * checked against the caller's own ledger rows — see transcribe-metering.ts.
  */
 import { supabase } from './supabase';
 import { settle, type PricingConfig } from './credits';
+import { reservationKeyPrefix } from './reservation-key';
 import {
   billableSeconds,
   isUuid,
+  reusableWindow,
   settleableModel,
   windowCharge,
+  RETRY_REUSE_SECONDS,
+  TRANSCRIBE_MODEL_PREFIX,
+  type PendingWindowRow,
   type ReservationRow,
 } from './transcribe-metering';
+
+/** Ledger key scope for transcription windows. */
+export const TRANSCRIBE_KEY_SCOPE = 'transcribe';
+
+/**
+ * The caller's own just-reserved, still-pending window for this window label and
+ * model, if there is one (a retry of a failed open). Null → reserve a new window.
+ */
+export async function findRetryWindow(
+  userId: string,
+  windowKey: unknown,
+  model: string,
+): Promise<string | null> {
+  const prefix = reservationKeyPrefix(TRANSCRIBE_KEY_SCOPE, windowKey);
+  if (!prefix) return null;
+
+  const now = Date.now();
+  const { data, error } = await supabase
+    .from('credit_ledger')
+    .select('request_id, idempotency_key, created_at')
+    .eq('user_id', userId)
+    .eq('kind', 'reservation')
+    .eq('status', 'pending')
+    .eq('model', `${TRANSCRIBE_MODEL_PREFIX}${model}`)
+    .gte('created_at', new Date(now - RETRY_REUSE_SECONDS * 1000).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(10);
+  if (error) throw new Error(`retry window lookup failed: ${error.message}`);
+
+  return reusableWindow(data as PendingWindowRow[] | null, prefix, now);
+}
 
 /**
  * Returns the new balance when the window was settled, or null when there was

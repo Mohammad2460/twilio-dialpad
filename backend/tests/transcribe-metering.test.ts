@@ -2,13 +2,16 @@ import { describe, it, expect } from 'vitest';
 import {
   billableSeconds,
   isUuid,
+  reusableWindow,
   settleableModel,
   windowCharge,
   WINDOW_SECONDS,
   SETTLE_GRACE_SECONDS,
+  RETRY_REUSE_SECONDS,
+  type PendingWindowRow,
   type ReservationRow,
 } from '../lib/transcribe-metering';
-import { reservationKey } from '../lib/reservation-key';
+import { reservationKey, reservationKeyPrefix } from '../lib/reservation-key';
 import { estimateTranscriptionCredits, type PricingConfig } from '../lib/pricing';
 
 // Mirror of seeded pricing_config v1. Pure-function tests only — no DB.
@@ -50,6 +53,66 @@ describe('reservationKey', () => {
     const long = reservationKey('transcribe', 'x'.repeat(500) + ' ;drop');
     expect(long.length).toBeLessThan(120);
     expect(long).not.toContain(' ');
+  });
+});
+
+describe('reservationKeyPrefix', () => {
+  it('prefixes every key built from the same client key', () => {
+    const prefix = reservationKeyPrefix('transcribe', 'CA123:0');
+    expect(prefix).toBe('transcribe:CA1230:');
+    expect(reservationKey('transcribe', 'CA123:0').startsWith(prefix!)).toBe(true);
+  });
+
+  it('is null without a usable client key', () => {
+    expect(reservationKeyPrefix('transcribe', undefined)).toBeNull();
+    expect(reservationKeyPrefix('transcribe', '')).toBeNull();
+    expect(reservationKeyPrefix('transcribe', ':: ::')).toBeNull();
+    expect(reservationKeyPrefix('transcribe', 7)).toBeNull();
+  });
+});
+
+describe('reusableWindow', () => {
+  const NOW = Date.parse('2026-10-01T00:00:10.000Z');
+  const PREFIX = reservationKeyPrefix('transcribe', 'CA123:0');
+  const R1 = '5857edd8-b03c-4707-8164-f0ec36acbca7';
+  const R2 = 'cf6119e4-9966-4544-be53-5523d4af4d16';
+  const pending = (over: Partial<PendingWindowRow> = {}): PendingWindowRow => ({
+    request_id: R1,
+    idempotency_key: reservationKey('transcribe', 'CA123:0'),
+    created_at: '2026-10-01T00:00:09.000Z',
+    ...over,
+  });
+
+  it('hands a just-reserved window back to a retry with the same label', () => {
+    expect(reusableWindow([pending()], PREFIX, NOW)).toBe(R1);
+  });
+
+  it('prefers the newest matching window', () => {
+    const older = pending({ request_id: R2, created_at: '2026-10-01T00:00:01.000Z' });
+    expect(reusableWindow([pending(), older], PREFIX, NOW)).toBe(R1);
+  });
+
+  it('does not reuse a window reserved under another label', () => {
+    const other = pending({ idempotency_key: reservationKey('transcribe', 'CA123:1') });
+    expect(reusableWindow([other], PREFIX, NOW)).toBeNull();
+    // A longer label that merely starts the same is a different window.
+    const longer = pending({ idempotency_key: reservationKey('transcribe', 'CA123:01') });
+    expect(reusableWindow([longer], PREFIX, NOW)).toBeNull();
+    expect(reusableWindow([pending({ idempotency_key: null })], PREFIX, NOW)).toBeNull();
+    expect(reusableWindow([pending({ idempotency_key: 'freegrant:u1' })], PREFIX, NOW)).toBeNull();
+  });
+
+  it('does not reuse a window past the reuse period', () => {
+    const old = new Date(NOW - (RETRY_REUSE_SECONDS + 1) * 1000).toISOString();
+    expect(reusableWindow([pending({ created_at: old })], PREFIX, NOW)).toBeNull();
+    expect(reusableWindow([pending({ created_at: 'not a date' })], PREFIX, NOW)).toBeNull();
+    expect(reusableWindow([pending({ created_at: '2026-10-01T00:05:00.000Z' })], PREFIX, NOW)).toBeNull();
+  });
+
+  it('never reuses without a window label or rows', () => {
+    expect(reusableWindow([pending()], null, NOW)).toBeNull();
+    expect(reusableWindow(null, PREFIX, NOW)).toBeNull();
+    expect(reusableWindow([], PREFIX, NOW)).toBeNull();
   });
 });
 

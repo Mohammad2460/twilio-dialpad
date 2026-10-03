@@ -13,7 +13,7 @@ import {
 } from '@/lib/credits';
 import { reservationKey } from '@/lib/reservation-key';
 import { WINDOW_SECONDS, TRANSCRIBE_MODEL_PREFIX } from '@/lib/transcribe-metering';
-import { settleWindow } from '@/lib/transcribe-settle';
+import { settleWindow, findRetryWindow, TRANSCRIBE_KEY_SCOPE } from '@/lib/transcribe-settle';
 
 export const runtime = 'nodejs';
 
@@ -97,19 +97,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Reserve the next window. Every token owns a fresh reservation.
+  // ── Reserve the next window. The ledger key is always generated here; the
+  //    one exception to a fresh hold is the client retrying an open it just
+  //    made, which gets its own still-pending window back.
   const estCredits = estimateTranscriptionCredits(WINDOW_SECONDS / 60, model, pricing);
-  const idemKey = reservationKey('transcribe', body.windowKey);
   let requestId = '';
+  let reserved = false;
   if (!trialing) {
+    try {
+      requestId = (await findRetryWindow(userId, body.windowKey, model)) ?? '';
+    } catch (e) {
+      console.error('[transcribe/token] retry lookup failed (non-fatal)', e);
+    }
+  }
+  if (!trialing && !requestId) {
     try {
       requestId = await reserve(
         userId,
         estCredits,
-        idemKey,
+        reservationKey(TRANSCRIBE_KEY_SCOPE, body.windowKey),
         `${TRANSCRIBE_MODEL_PREFIX}${model}`,
         pricing.version,
       );
+      reserved = true;
     } catch (e) {
       if (e instanceof InsufficientCreditsError) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
@@ -122,7 +132,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Mint the token; refund the reservation if Deepgram is unreachable.
+  // ── Mint the token; refund the reservation made here if Deepgram is unreachable.
   try {
     const grant = await mintDeepgramToken(TTL_SECONDS);
     return j({
@@ -134,7 +144,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error('[transcribe/token] mint failed', e);
-    if (requestId) {
+    if (reserved) {
       try {
         await refund(requestId, 0, null);
       } catch {
