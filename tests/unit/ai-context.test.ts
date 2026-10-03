@@ -6,6 +6,7 @@ import {
   formatTranscriptText,
   localDate,
   mergeCalls,
+  singleCallContext,
   splitCitations,
 } from '../../src/shared/ai-context';
 import type { CallInsight, CallRecord, Transcript, TranscriptSegment } from '../../src/shared/types';
@@ -232,5 +233,18 @@ describe('token budget for non-Latin text', () => {
     expect(estimateTokens('你好你好')).toBe(4);
     expect(truncateToTokens('你好你好你好', 4)).toBe('你好你好');
     expect(truncateToTokens('abcdefghij', 2)).toBe('abcdefgh');
+  });
+});
+
+describe('singleCallContext', () => {
+  it('returns a short transcript unchanged', () => {
+    expect(singleCallContext([seg('user', 'Hi'), seg('remote', 'Hello')])).toBe('You: Hi\nCaller: Hello');
+  });
+
+  it('cuts a very long transcript to fit one request', () => {
+    const long = Array.from({ length: 6000 }, (_, i) => seg('user', 'word '.repeat(20), i * 1000));
+    const text = singleCallContext(long);
+    expect(estimateTokens(text)).toBeLessThanOrEqual(40_000);
+    expect(text.startsWith('You: word')).toBe(true);
   });
 });

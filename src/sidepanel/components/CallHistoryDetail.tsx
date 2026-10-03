@@ -3,7 +3,7 @@ import { transcripts } from '@shared/transcripts';
 import type { Transcript } from '@shared/types';
 import { formatForDisplay } from '@shared/phone';
 import { computeTalkRatio } from '@shared/talk-ratio';
-import { formatTranscriptText } from '@shared/ai-context';
+import { singleCallContext } from '@shared/ai-context';
 import { onInsightChange } from '@shared/insights';
 import { AiChatbox } from './AiChatbox';
 import { InsightCard } from './InsightCard';
@@ -199,7 +199,7 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
                 </button>
               ) : (
                 <div className="h-72 rounded-lg border border-gray-200 overflow-hidden">
-                  <AiChatbox transcript={formatTranscriptText(t.segments)} />
+                  <AiChatbox transcript={singleCallContext(t.segments)} />
                 </div>
               )}
             </div>

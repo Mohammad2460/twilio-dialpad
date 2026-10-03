@@ -80,6 +80,14 @@ export function truncateToTokens(text: string, maxTokens: number): string {
   return text;
 }
 
+/** Room left for the question, the conversation and the answer under the backend's request cap. */
+const SINGLE_CALL_TOKENS = 40_000;
+
+/** One call's transcript as chat context, cut to fit a single request. */
+export function singleCallContext(segments: TranscriptSegment[]): string {
+  return truncateToTokens(formatTranscriptText(segments), SINGLE_CALL_TOKENS);
+}
+
 /** Local calendar date, YYYY-MM-DD. */
 export function localDate(ms: number): string {
   const d = new Date(ms);
