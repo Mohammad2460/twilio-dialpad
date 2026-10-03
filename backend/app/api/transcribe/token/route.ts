@@ -7,20 +7,16 @@ import { takeTrialMint } from '@/lib/trial-cap';
 import {
   getActivePricing,
   estimateTranscriptionCredits,
-  costFromDeepgramMinutes,
-  usdToCredits,
   reserve,
-  settle,
   refund,
   InsufficientCreditsError,
 } from '@/lib/credits';
+import { reservationKey } from '@/lib/reservation-key';
+import { WINDOW_SECONDS, TRANSCRIBE_MODEL_PREFIX } from '@/lib/transcribe-metering';
+import { settleWindow } from '@/lib/transcribe-settle';
 
 export const runtime = 'nodejs';
 
-// One metering window. The client reconnects (with a fresh token) each window,
-// so a zero-balance user gets no next token and transcription stops. Short
-// enough to bound abuse, long enough that reconnects are infrequent.
-const WINDOW_SECONDS = 120;
 const TTL_SECONDS = 60; // token only needs validity at connect
 
 export function OPTIONS() {
@@ -34,10 +30,12 @@ function j(body: unknown, status = 200) {
 interface TokenBody {
   /** Deepgram model (managed default nova-3). Must exist in pricing.deepgram. */
   model?: string;
-  /** Settle the previous window: its reservation id + actual seconds streamed. */
+  /** Settle the previous window: its reservation id + the seconds the client
+   *  streamed. Both are checked against the ledger (see settleWindow). */
   prevRequestId?: string;
   prevSeconds?: number;
-  /** Idempotency key for THIS window's reservation (e.g. `${callSid}:${windowIdx}`). */
+  /** Client label for THIS window (e.g. `${callSid}:${windowIdx}`) — a trace
+   *  prefix only (see reservationKey). */
   windowKey?: string;
 }
 
@@ -89,26 +87,29 @@ export async function POST(req: NextRequest) {
   const model = typeof body.model === 'string' ? body.model : 'nova-3';
   if (!pricing.deepgram[model]) return j({ error: 'unknown_model' }, 400);
 
-  // ── Settle the previous window to actual seconds (best-effort; the reaper
-  //    backstops a missed settle).
-  if (body.prevRequestId && typeof body.prevSeconds === 'number' && body.prevSeconds >= 0) {
+  // ── Settle the previous window (best-effort; the reaper backstops a missed
+  //    settle).
+  if (body.prevRequestId) {
     try {
-      const minutes = body.prevSeconds / 60;
-      const usd = costFromDeepgramMinutes(minutes, model, pricing);
-      const actual = body.prevSeconds === 0 ? 0 : usdToCredits(usd, pricing);
-      await settle(body.prevRequestId, actual, usd, model);
+      await settleWindow(userId, body.prevRequestId, body.prevSeconds, pricing);
     } catch (e) {
       console.error('[transcribe/token] settle prev failed (non-fatal)', e);
     }
   }
 
-  // ── Reserve the next window.
+  // ── Reserve the next window. Every token owns a fresh reservation.
   const estCredits = estimateTranscriptionCredits(WINDOW_SECONDS / 60, model, pricing);
-  const idemKey = body.windowKey ?? crypto.randomUUID();
+  const idemKey = reservationKey('transcribe', body.windowKey);
   let requestId = '';
   if (!trialing) {
     try {
-      requestId = await reserve(userId, estCredits, idemKey, `deepgram:${model}`, pricing.version);
+      requestId = await reserve(
+        userId,
+        estCredits,
+        idemKey,
+        `${TRANSCRIBE_MODEL_PREFIX}${model}`,
+        pricing.version,
+      );
     } catch (e) {
       if (e instanceof InsufficientCreditsError) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
@@ -133,10 +134,12 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error('[transcribe/token] mint failed', e);
-    try {
-      await refund(requestId, 0, null);
-    } catch {
-      /* reaper backstops */
+    if (requestId) {
+      try {
+        await refund(requestId, 0, null);
+      } catch {
+        /* reaper backstops */
+      }
     }
     return j({ error: 'mint_failed' }, 502);
   }
