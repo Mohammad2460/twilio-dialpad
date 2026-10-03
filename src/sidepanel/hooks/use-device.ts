@@ -11,6 +11,8 @@ import { transcripts, buildTranscript, prefs } from '@shared/transcripts';
 import { ensureCloudAccount, syncCallToCloud } from '@shared/cloud';
 import { track } from '@shared/telemetry';
 import { useDialerStore } from '../stores/dialer-store';
+import { AI_CHAT_ENABLED } from '@shared/flags';
+import { autoSummaryEnabled, backfillInsights, summarizeCall } from '@shared/insights';
 import type { CallRecord, Transcript } from '@shared/types';
 
 // Module-level singleton — persists across React re-renders and side-panel re-mounts.
@@ -168,6 +170,15 @@ export function useDevice() {
     // Load call history.
     storage.getHistory().then(setHistory);
 
+    // Summarise recent transcribed calls that never got AI notes (e.g. the panel
+    // was closed right after the call). Best-effort, capped, never blocks.
+    if (AI_CHAT_ENABLED) {
+      storage
+        .getSettings()
+        .then((s) => (s && autoSummaryEnabled(s) ? backfillInsights() : undefined))
+        .catch(() => {});
+    }
+
     // Hydrate dialer store (queue + dnc + daily count) — fire-and-forget.
     useDialerStore.getState().hydrate().catch((e) => console.warn('[dialer] hydrate failed', e));
 
@@ -260,6 +271,15 @@ async function persistEndedCall(
     }
   } catch (e) {
     console.warn('[dialer] mark-done failed', e);
+  }
+
+  // AI notes for this call (summary, promises) — fire-and-forget, never blocks call flow
+  if (AI_CHAT_ENABLED && transcript) {
+    const sid = cs.sid;
+    storage
+      .getSettings()
+      .then((s) => (autoSummaryEnabled(s) ? summarizeCall(sid) : undefined))
+      .catch(() => {});
   }
 
   // 3. Cloud sync — fire-and-forget, never blocks call flow

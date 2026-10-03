@@ -45,7 +45,8 @@ export function chatSystemPrompt(
       '- Cite the calls you rely on by writing their reference exactly, e.g. [C3], right after the claim.\n' +
       '- If the call log does not contain the answer, say so plainly. Never invent calls, names, numbers or quotes.\n' +
       '- Use the "Today" line at the top of the log for anything about today, this week or overdue items.\n' +
-      '- Be concise and practical: short paragraphs or a short list. No preamble.\n' +
+      '- Be concise and practical: short paragraphs or a short "- " list. No preamble.\n' +
+      '- Plain text only — no markdown headings, bold or tables.\n' +
       '- You cannot take actions (no calling, emailing or scheduling) — only advise.\n' +
       `- ${DATA_NOT_INSTRUCTIONS}\n\n` +
       `--- CALL LOG ---\n${opts.context ?? ''}\n--- END CALL LOG ---`

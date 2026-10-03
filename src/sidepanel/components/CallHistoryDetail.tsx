@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { transcripts } from '@shared/transcripts';
 import type { Transcript } from '@shared/types';
 import { formatForDisplay } from '@shared/phone';
 import { computeTalkRatio } from '@shared/talk-ratio';
-import { PaywallGate } from './PaywallGate';
+import { formatTranscriptText } from '@shared/ai-context';
+import { onInsightChange } from '@shared/insights';
 import { AiChatbox } from './AiChatbox';
+import { InsightCard } from './InsightCard';
 import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 
 interface Props {
@@ -19,15 +21,39 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
   const [copyState, setCopyState] = useState<'idle' | 'copied'>('idle');
   const [showChat, setShowChat] = useState(false);
 
+  const [focusTs, setFocusTs] = useState<number | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     let cancelled = false;
-    transcripts.get(callSid).then((res) => {
-      if (cancelled) return;
-      setT(res);
-      setLoading(false);
-    });
-    return () => { cancelled = true; };
+    const load = () =>
+      transcripts.get(callSid).then((res) => {
+        if (cancelled) return;
+        setT(res);
+        setLoading(false);
+      });
+    load();
+    // Pick up a summary that lands (or a promise ticked off) while this is open.
+    const unsubscribe = onInsightChange(load);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
   }, [callSid]);
+
+  /** Scroll to the first transcript line at or after `sec` and flash it. */
+  function jumpTo(sec: number) {
+    if (!t) return;
+    const target = t.segments.find((s) => s.ts >= sec * 1000) ?? t.segments[t.segments.length - 1];
+    if (!target) return;
+    setQuery('');
+    setFocusTs(target.ts);
+    requestAnimationFrame(() => {
+      bodyRef.current
+        ?.querySelector(`[data-ts="${target.ts}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    });
+  }
 
   const filtered = useMemo(() => {
     if (!t) return [];
@@ -138,14 +164,17 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
         )}
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-4 py-3">
+        <div ref={bodyRef} className="flex-1 overflow-y-auto px-4 py-3">
           {loading && <p className="text-sm text-gray-400">Loading…</p>}
           {!loading && !t && <p className="text-sm text-gray-500">Transcript not found.</p>}
           {t && filtered.length === 0 && query && (
             <p className="text-sm text-gray-400 italic">No matches.</p>
           )}
-          {/* Claude MCP — the primary post-call analysis path */}
-          {MCP_PROMO_ENABLED && t && !query && (
+          {/* AI notes for this call — summary, objections, promises, next step */}
+          {AI_CHAT_ENABLED && t && !query && <InsightCard transcript={t} onJump={jumpTo} />}
+
+          {/* Claude MCP — the post-call analysis path when in-extension AI is off */}
+          {!AI_CHAT_ENABLED && MCP_PROMO_ENABLED && t && !query && (
             <div className="mb-3 rounded-lg border border-orange-100 bg-orange-50/60 p-3">
               <p className="text-xs font-semibold text-orange-800">Analyze this call with Claude</p>
               <p className="mt-0.5 text-[11px] text-gray-600">
@@ -155,22 +184,7 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
             </div>
           )}
 
-          {/* AI call analysis — Pro-gated; free users see an upsell */}
-          {AI_CHAT_ENABLED && t && !query && (
-            <div className="mb-3">
-              <PaywallGate feature="ai_analysis">
-                <div className="rounded-lg border border-brand-100 bg-brand-50 p-3">
-                  <p className="text-xs font-semibold text-brand-800">AI call analysis</p>
-                  <p className="mt-0.5 text-[11px] text-gray-600">
-                    Ask Claude to break down this call — objections, talk ratio, and what to improve —
-                    through your connected MCP. Use “Copy all”, then ask Claude about it.
-                  </p>
-                </div>
-              </PaywallGate>
-            </div>
-          )}
-
-          {/* Managed AI chatbox — ask Claude in-extension (credit-metered). */}
+          {/* Managed AI chatbox over this one call (credit-metered). */}
           {AI_CHAT_ENABLED && t && !query && (
             <div className="mb-3">
               {!showChat ? (
@@ -180,16 +194,12 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
                 >
                   <p className="text-xs font-semibold text-blue-800">Ask AI about this call</p>
                   <p className="mt-0.5 text-[11px] text-gray-600">
-                    Managed AI — no setup. GPT-5 mini is free; Claude models are Pro.
+                    Why didn’t they commit? What should you say next time?
                   </p>
                 </button>
               ) : (
                 <div className="h-72 rounded-lg border border-gray-200 overflow-hidden">
-                  <AiChatbox
-                    transcript={t.segments
-                      .map((s) => `${s.speaker === 'user' ? 'You' : 'Caller'}: ${s.text}`)
-                      .join('\n')}
-                  />
+                  <AiChatbox transcript={formatTranscriptText(t.segments)} />
                 </div>
               )}
             </div>
@@ -198,7 +208,11 @@ export function CallHistoryDetail({ callSid, onClose }: Props) {
           {t && (
             <div className="space-y-2 text-sm">
               {filtered.map((s, i) => (
-                <div key={i} className="flex gap-2">
+                <div
+                  key={i}
+                  data-ts={s.ts}
+                  className={`flex gap-2 rounded ${focusTs === s.ts ? 'bg-yellow-50 ring-1 ring-yellow-200' : ''}`}
+                >
                   <span className="shrink-0 w-12 text-xs tabular-nums text-gray-400">
                     {formatTs(s.ts)}
                   </span>
