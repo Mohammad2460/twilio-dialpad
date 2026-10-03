@@ -30,7 +30,7 @@ Chrome MV3 side-panel extension: browser-based Twilio dialer (BYO-Twilio — use
 - Marketing consent is separate and default-OFF.
 
 ## Managed AI + credits (v2 / Phase 8 — shipped)
-- Multi-provider chatbox: model id `gpt-*` → OpenAI, else Anthropic. **Free tier = `gpt-5-mini` only** (default); all Claude models (haiku/sonnet/opus) require a PAID sub (`user_is_paid`). AI chat UI is currently hidden (`src/shared/flags.ts`).
+- Multi-provider chatbox: model id `gpt-*` → OpenAI, else Anthropic. **Free tier = `gpt-5-mini` only** (default); all Claude models (haiku/sonnet/opus) require a PAID sub (`user_is_paid`). The in-extension AI assistant is on from 1.4.0 (`AI_CHAT_ENABLED` in `src/shared/flags.ts`) and offers `gpt-5-mini` only — no model picker until Anthropic is funded. Call summaries: `POST /api/ai/summarize`; chat over calls: `/api/ai/chat` `mode: 'calls'`.
 - Entitlements: 7-day trial unlocks every feature (client `entitlements.can()` + backend `user_has_access`). Only the Claude-model gate is paid-only.
 - Auth: per-device bearer `<deviceId>.<secret>`. The bare-`<userId>` legacy fallback closes at `LEGACY_AUTH_UNTIL` (env, default 2026-07-31); ≤1.2.0 installs migrate via `ReconnectBanner`.
 - `1 credit = $0.01` face. `credits = max(min_charge, ceil(vendor_usd × markup × 100))`, markup 3×. Knobs live in `pricing_config` (DB, versioned, hot-swappable).

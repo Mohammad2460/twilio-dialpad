@@ -22,7 +22,9 @@ export function PreCallBrief({
 
   const last = formatRelativeDate(new Date(brief.lastCallAt).toISOString());
   const detailSid = brief.detailSid;
+  // Keep it to two detail lines — the keypad sits right below this card.
   const promises = brief.openPromises.slice(0, 2);
+  const objection = promises.length < 2 ? brief.objections[0] : undefined;
 
   return (
     <button
@@ -45,10 +47,10 @@ export function PreCallBrief({
           {p.promise.text}
         </p>
       ))}
-      {brief.objections.length > 0 && (
+      {objection && (
         <p className="mt-0.5 truncate text-xs text-gray-600">
           <span className="font-medium">Objection: </span>
-          {brief.objections[0]}
+          {objection}
         </p>
       )}
     </button>

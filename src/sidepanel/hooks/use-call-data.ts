@@ -24,8 +24,11 @@ export function useCallData(): { calls: CallEntry[]; loaded: boolean } {
       .finally(() => setLoaded(true));
   }, []);
 
-  // history.length: a finished call adds a record right after its transcript is saved.
-  useEffect(reload, [reload, history.length]);
+  // A finished call adds a history record right after its transcript is saved.
+  // Keyed on the newest record, not the length — history is capped, so the
+  // length stops changing once it is full.
+  const newestId = history[0]?.id;
+  useEffect(reload, [reload, newestId]);
   useEffect(() => onInsightChange(reload), [reload]);
 
   const calls = useMemo(() => mergeCalls(history, metas), [history, metas]);

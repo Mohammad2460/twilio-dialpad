@@ -1,6 +1,6 @@
 # Privacy Policy — Twilio Dialpad
 
-**Last updated: June 2026**
+**Last updated: October 2026**
 
 ## What This Extension Does
 
@@ -27,7 +27,8 @@ Always collected; never leaves your browser unless cloud sync is enabled.
 | HubSpot API token (optional) | Reverse contact lookup on incoming calls | Only to HubSpot's API (your account) |
 | Deepgram API key (optional) | Live call transcription | Only to Deepgram (your account) |
 | Call history | Last 20 call records (number, duration, direction) | See "Cloud sync" below |
-| Transcripts | Per-call transcript JSON (text only, no audio) | See "Cloud sync" below |
+| Transcripts | Per-call transcript JSON (text only, no audio) | See "Cloud sync" and "Built-in AI assistant" below |
+| AI call notes | Summary, objections, promises and next step for each transcribed call | No — created by the AI assistant, stored only on this device |
 
 ### B. Sent to our cloud backend at `dialler-mcp.vercel.app` (only if subscribed)
 
@@ -58,6 +59,22 @@ We collect **only** the event name, a timestamp, and small non-identifying attri
 **Linkage:** before you create a cloud account, these events are pseudonymous (tied only to the random install id). Once you have a cloud account, new events are associated with your account id — so we can understand the journey from install to paid — meaning they become linkable to you. They remain unlinked to call content or phone numbers.
 
 Raw events are deleted after **90 days**. This is first-party only — no third-party analytics SDK, no advertising, no cross-site tracking, no cookies.
+
+### B3. Built-in AI assistant (version 1.4 and later)
+
+The extension includes an AI assistant that summarises your transcribed calls and answers questions about them.
+
+| When | What is sent | Where |
+|------|--------------|-------|
+| After a transcribed call ends (automatic call summaries — on by default, switch off in **Settings**) | That call's transcript text, the call date, call direction and the contact name if known | Our backend, which passes it to our AI provider (OpenAI) to produce the summary |
+| When you ask the assistant a question | Your question plus text from your recent calls (transcripts, AI notes, and call details such as number, contact name, date and duration) | Our backend, which passes it to our AI provider (OpenAI) to produce the answer |
+
+- This feature does **not** store your transcripts or questions on our backend — they are passed through to produce the result. (Cloud sync, section B, is separate.)
+- The resulting notes (summary, objections, promises, next step) are stored **only on your device**, alongside the transcript.
+- The "Today" list, the promises list and the pre-call brief are computed on your device from those notes; opening them sends nothing.
+- We record how many AI credits each request used. We do not record its content.
+- OpenAI processes the text under its API terms; see [OpenAI's API data usage policy](https://openai.com/policies/api-data-usage-policies). No audio is ever sent.
+- Calls without a transcript are never sent for summarising.
 
 ### C. Sent to Twilio (always, regardless of subscription)
 
@@ -136,7 +153,7 @@ A self-serve in-extension deletion button is on our roadmap.
 | `*.twilio.com` / `*.twil.io` | Connect to Twilio's voice + token infrastructure |
 | `api.hubapi.com` | Optional HubSpot contact reverse-lookup (only if you configure HubSpot) |
 | `api.deepgram.com` | Optional live transcription (only if you configure a Deepgram key) |
-| `dialler-mcp.vercel.app` | Cloud sync + Claude MCP relay (only while subscribed) |
+| `dialler-mcp.vercel.app` | Cloud sync + Claude MCP relay (only while subscribed); built-in AI assistant requests |
 
 ---
 

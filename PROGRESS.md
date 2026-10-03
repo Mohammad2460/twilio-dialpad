@@ -3,11 +3,25 @@
 > Current state only. History lives in git (`git log`) and merged PRs — don't re-grow a changelog here.
 > **Plan of record:** [`docs/strategy/relaunch-plan.md`](docs/strategy/relaunch-plan.md) (AI assistant, pricing, growth, distribution, 2.0 roadmap).
 
-_Last updated: 2026-09-29._
+_Last updated: 2026-10-04._
 
 ## Status
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
-- **Next: AI assistant v1** (item 1 in the relaunch plan) → quiet 1.4 → … → **2.0 relaunch**.
+- **AI assistant v1 built (2026-10-04)** — item 1 of the relaunch plan; `package.json` is at **1.4.0**. Not yet uploaded to the store, not yet tested against the live model (see "AI assistant v1" below).
+- **Next: pricing — Free vs Pro limits + demo tour** (item 2) → … → **2.0 relaunch**.
+
+## AI assistant v1 (1.4.0)
+Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
+- **Call notes** — after each transcribed call the extension asks the backend (`POST /api/ai/summarize`, `gpt-5-mini`, credit-metered) for a summary, objections, promises and a next step. Stored on the transcript record in IndexedDB (`Transcript.insight`), local only. Backfills up to 5 recent calls when the panel opens. Settings toggle: "Automatic call summaries" (default on).
+- **AI tab** — Today (promises due, missed calls not returned) + open promises (check-off) + chat. Today/promises/brief are computed locally from the notes — no AI call.
+- **Chat** — `POST /api/ai/chat` with `mode: 'calls'`; the extension sends a call digest (`src/shared/ai-context.ts`, ~40k-token budget, newest first). Answers cite `[C#]`, rendered as chips that open the call.
+- **Pre-call brief** — keypad (typed number has history) and incoming-call screen.
+- Single model, no picker. `AI_CHAT_ENABLED = true`; the Claude connector is reachable from the bottom of the AI tab.
+
+**Before uploading 1.4.0 to the store**
+- [ ] Live test with a real account: one transcribed call → summary appears; ask a question in the AI tab. The model's output has only been exercised through a local stub so far.
+- [ ] Privacy: `docs/PRIVACY_POLICY.md` has the new "Built-in AI assistant" section — the served `/privacy` page (PR #19) and the store listing's data-use answers must say the same.
+- [ ] Credits: summaries cost ~1–2 credits per call and a question ~3–4; the free grant is 50. Decide whether to raise `free_grant` in `pricing_config` before item 2 replaces credits with "questions".
 
 ## Why the product "died" (2026-09-28 audit)
 - The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.
@@ -32,8 +46,8 @@ Owner logs in to their real account via a manually created device row (label `de
 
 ## Product state
 - Calls: BYO-Twilio. New installs = backend-hosted voice (`/api/voice/token`, `/api/voice/twiml`); ≤1.2.0 installs = legacy per-user Twilio Function (Twilio's Node 22 default applies to any rebuild; deployed Functions keep running).
-- Hidden via `src/shared/flags.ts`: in-extension AI chat (`AI_CHAT_ENABLED`), BYO Deepgram. SMS UI removed (backend routes dormant).
-- Live: dialer, history, auto-dialer (CSV, 100 cap), recording, managed transcription, Claude MCP connector (`/api/mcp/[userId]`), Pro $9/mo + 7-day trial via Dodo (new pricing in the plan is not built yet).
+- Hidden via `src/shared/flags.ts`: BYO Deepgram. SMS UI removed (backend routes dormant).
+- Live: dialer, history, auto-dialer (CSV, 100 cap), recording, managed transcription, AI assistant (1.4.0, see above), Claude MCP connector (`/api/mcp/[userId]`), Pro $9/mo + 7-day trial via Dodo (new pricing in the plan is not built yet).
 - Prod DB: `anon`/`authenticated` roles have no grants (only the backend's service role touches the DB); telemetry views are `security_invoker`.
 
 ## Known follow-ups (not blocking)
