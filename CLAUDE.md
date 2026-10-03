@@ -36,7 +36,10 @@ Chrome MV3 side-panel extension: browser-based Twilio dialer (BYO-Twilio — use
 - `1 credit = $0.01` face. `credits = max(min_charge, ceil(vendor_usd × markup × 100))`, markup 3×. Knobs live in `pricing_config` (DB, versioned, hot-swappable).
 - Transcription: BYO Deepgram (free) OR managed via temp-token JWTs (credits).
 - Pricing/grant config: Supabase `pricing_config` (active row). Pro $9/mo + PWYW top-ups via Dodo.
-- Provider keys set in Vercel (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`). Anthropic account funding pending — Claude fails gracefully until funded; GPT-5 mini works.
+- Provider keys set in Vercel (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`). Anthropic account funding pending — Claude fails gracefully until funded. `gpt-5-mini` confirmed working in production on 2026-10-04 (the OpenAI key in Vercel was invalid before that). When an AI route returns `generation_failed`, the reason is in the Vercel logs: search `vendor call failed`.
+
+## Privacy policy
+- The public policy the store listing links to lives in the owner's **gist**, not in this repo. `docs/PRIVACY_POLICY.md` is the source text — when it changes, the gist must be updated by the owner to match.
 
 ## Workflow norms
 - `main` is PR-protected — never push directly. Branch + PR.

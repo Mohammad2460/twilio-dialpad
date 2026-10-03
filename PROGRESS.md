@@ -7,7 +7,7 @@ _Last updated: 2026-10-04._
 
 ## Status
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
-- **AI assistant v1 built (2026-10-04)** — item 1 of the relaunch plan; `package.json` is at **1.4.0**. Not yet uploaded to the store, not yet tested against the live model (see "AI assistant v1" below).
+- **AI assistant v1 merged and live-tested (2026-10-04)** — item 1 of the relaunch plan. `package.json` is at **1.4.0**. **Not uploaded to the store** — the owner is holding store uploads.
 - **Next: pricing — Free vs Pro limits + demo tour** (item 2) → … → **2.0 relaunch**.
 
 ## AI assistant v1 (1.4.0)
@@ -18,10 +18,22 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - **Pre-call brief** — keypad (typed number has history) and incoming-call screen.
 - Single model, no picker. `AI_CHAT_ENABLED = true`; the Claude connector is reachable from the bottom of the AI tab.
 
+**Live test (2026-10-04, production, `gpt-5-mini`)**
+- The OpenAI key in Vercel was invalid (every AI call failed and was refunded); the owner replaced it. Both routes now log why a vendor call failed (`vendor call failed` in the Vercel logs — status, code, short message only).
+- `POST /api/ai/summarize` on a short call: correct summary, objections, promises with the right owner, relative dates resolved to real dates. **1 credit.**
+- `POST /api/ai/chat` `mode: 'calls'` with one small call as context: grounded answer citing `[C1]`. **1 credit.** A full-size digest (~40k tokens) costs more — estimated 3–4 credits, **not measured yet**.
+- Ledger debits matched; failed runs were refunded in full.
+- The owner loaded the 1.4.0 build unpacked with seeded calls and checked the opt-in notice, AI tab, call detail, pre-call brief and Settings toggle.
+
 **Before uploading 1.4.0 to the store**
-- [ ] Live test with a real account: one transcribed call → summary appears; ask a question in the AI tab. The model's output has only been exercised through a local stub so far.
-- [ ] Privacy: `docs/PRIVACY_POLICY.md` has the new "Built-in AI assistant" section — the served `/privacy` page (PR #19) and the store listing's data-use answers must say the same.
-- [ ] Credits: summaries cost ~1–2 credits per call and a question ~3–4; the free grant is 50. Decide whether to raise `free_grant` in `pricing_config` before item 2 replaces credits with "questions".
+- [ ] Real call test: one real transcribed call end to end → summary appears on its own. Needs a working Twilio account (the owner's is suspended).
+- [ ] Privacy gist: the public policy lives in the owner's gist. Add the "Built-in AI assistant" section from `docs/PRIVACY_POLICY.md` to it.
+- [ ] Store listing data-use answers: transcript text is sent to an AI provider to provide the feature; not sold, not used for advertising.
+- [ ] Fresh `pnpm build` from `main` → zip `dist/` → upload. No store zip exists yet.
+
+**Owner decisions still open (do not change without them)**
+- Trial/free credit grant (50) versus real AI cost; whether summaries should be free during the trial.
+- "Credits" wording and balance display — belongs to item 2 (pricing: show hours and questions).
 
 ## Why the product "died" (2026-09-28 audit)
 - The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.
