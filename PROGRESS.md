@@ -51,4 +51,4 @@ Owner logs in to their real account via a manually created device row (label `de
 ## Working rules
 - **Never touch Dodo or customer-payment code/data.** Owner creates Dodo products/prices.
 - **The repo is public** — keep security specifics and user data out of commits, PRs and docs.
-- Prod DB changes: Claude writes the SQL; the owner runs it in the Supabase SQL editor.
+- Prod DB changes: Claude may apply SQL to the prod Supabase project itself (owner approved 2026-10-04), carefully and double-checked: write it as a migration file in `scripts/` first, read the live definitions and compare before changing anything, test on a local Postgres where possible, apply, then verify the result. Schema/function changes only — never payment tables or customer data.
