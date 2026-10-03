@@ -20,6 +20,7 @@ import {
   type AnthropicUsage,
   type OpenAiUsage,
 } from '@/lib/credits';
+import { chatSystemPrompt, sanitizeTurns, reservationKey, type ChatMode } from '@/lib/ai-prompts';
 
 export const runtime = 'nodejs';
 
@@ -45,13 +46,18 @@ interface ChatBody {
   model?: string;
   /** Plain-text transcript of the call, assembled client-side. */
   transcript?: string;
+  /** Multi-call digest ([C1]…[Cn] blocks), assembled client-side. Used by mode 'calls'. */
+  context?: string;
   /** Prior chat turns in this thread (user/assistant). */
   messages?: { role: 'user' | 'assistant'; content: string }[];
-  /** Per-message idempotency key from the client (dedupes reserve on retry). */
+  /** Per-message key from the client — a trace prefix only (see reservationKey). */
   idempotencyKey?: string;
-  /** 'call' = coach over a transcript; 'general' = open dialer assistant. */
-  mode?: 'call' | 'general';
+  /** 'call' = coach over one transcript; 'calls' = Q&A over the call digest;
+   *  'general' = open dialer assistant. */
+  mode?: ChatMode;
 }
+
+const MODES: readonly ChatMode[] = ['call', 'general', 'calls'];
 
 /**
  * POST /api/ai/chat — managed Claude chatbox over a call transcript.
@@ -90,7 +96,8 @@ export async function POST(req: NextRequest) {
   }
 
   const transcript = typeof body.transcript === 'string' ? body.transcript : '';
-  const turns = Array.isArray(body.messages) ? body.messages : [];
+  const context = typeof body.context === 'string' ? body.context : '';
+  const turns = sanitizeTurns(body.messages);
   if (turns.length === 0) return j({ error: 'no_messages' }, 400);
 
   const provider = providerForModel(model);
@@ -98,16 +105,9 @@ export async function POST(req: NextRequest) {
     provider === 'openai' ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return j({ error: 'ai_unavailable' }, 503);
 
-  const mode: 'call' | 'general' = body.mode ?? (transcript ? 'call' : 'general');
-  const system =
-    mode === 'call'
-      ? 'You are a sales-call coach embedded in a dialer. Answer the user’s questions ' +
-        'about THIS call using the transcript below. Be concise, specific, and tactical. ' +
-        'If the transcript does not contain the answer, say so.\n\n' +
-        `--- CALL TRANSCRIPT ---\n${transcript}\n--- END TRANSCRIPT ---`
-      : 'You are a helpful sales assistant embedded in a Twilio dialer Chrome extension. ' +
-        'Help the user with sales calls, scripts, objection handling, follow-ups, and ' +
-        'general questions. Be concise, specific, and practical.';
+  const mode: ChatMode =
+    body.mode && MODES.includes(body.mode) ? body.mode : transcript ? 'call' : 'general';
+  const system = chatSystemPrompt(mode, { transcript, context });
 
   // Estimate input tokens for the reservation hold (chars/4 heuristic, upper-bounded).
   const promptChars = system.length + turns.reduce((n, m) => n + m.content.length, 0);
@@ -122,7 +122,7 @@ export async function POST(req: NextRequest) {
   }
 
   const estCredits = estimateLlmCredits(estInputTokens, model, pricing);
-  const idemKey = body.idempotencyKey ?? crypto.randomUUID();
+  const idemKey = reservationKey('chat', body.idempotencyKey);
 
   let requestId: string;
   try {
@@ -152,6 +152,9 @@ export async function POST(req: NextRequest) {
             // gpt-5 family: MUST use max_completion_tokens (not max_tokens) and
             // MUST NOT send temperature/top_p (only defaults accepted → else 400).
             max_completion_tokens: maxOut,
+            // Reasoning tokens bill as output and delay the first token; Q&A over
+            // supplied call data does not need more than a light pass.
+            ...(model.startsWith('gpt-5') ? { reasoning_effort: 'low' as const } : {}),
             stream: true,
             stream_options: { include_usage: true },
             messages: [
