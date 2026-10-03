@@ -117,10 +117,10 @@ export const INSIGHT_JSON_SCHEMA = {
     additionalProperties: false,
     required: ['summary', 'objections', 'promises', 'nextStep'],
     properties: {
-      summary: { type: 'string', description: '2-3 sentences: what the call was about and how it ended.' },
+      summary: { type: 'string', description: 'At most 2 short sentences, under 35 words: what the call was about and where it stands. Leave out the promises, objections and next step — they have their own fields.' },
       objections: {
         type: 'array',
-        description: 'Concerns or objections the other party raised. Empty if none.',
+        description: 'Anything standing between the other party and a yes: concerns, objections, and requirements or conditions they stated (e.g. "needs SSO before rollout"). A few words each. Empty if none.',
         items: { type: 'string' },
       },
       promises: {
@@ -151,7 +151,9 @@ export function insightSystemPrompt(): string {
     'or has no real conversation, say so in the summary and leave the lists empty. ' +
     'Resolve relative dates ("Thursday", "next week", "tomorrow") against the call date into ' +
     'YYYY-MM-DD; use null when no date was given. ' +
-    'Keep every string short and plain. ' +
+    'Keep every string short and plain. The summary is shown on a small card: two short sentences at most, ' +
+    'and do not repeat in it what the other fields already hold. ' +
+    'A requirement or condition the other party states counts as an objection. ' +
     DATA_NOT_INSTRUCTIONS
   );
 }
