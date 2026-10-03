@@ -5,6 +5,7 @@ import { authenticate } from '@/lib/auth';
 import {
   getActivePricing,
   estimateLlmCredits,
+  estimateTokens,
   enforceLlmCaps,
   costFromOpenAiUsage,
   usdToCredits,
@@ -89,8 +90,8 @@ export async function POST(req: NextRequest) {
   const system = insightSystemPrompt();
   const user = insightUserPrompt({ transcript, callDate, direction, contactName });
 
-  // Estimate input tokens for the reservation hold (chars/4 heuristic, upper-bounded).
-  const estInputTokens = Math.ceil((system.length + user.length) / 4);
+  // Estimate input tokens for the cap and the reservation hold.
+  const estInputTokens = estimateTokens(system) + estimateTokens(user);
   const maxOut = pricing.caps.max_output_tokens;
   try {
     enforceLlmCaps(estInputTokens, maxOut, pricing);
@@ -142,18 +143,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Settlement MUST come from real usage. With no usage object we have no real
-  // cost — bill the conservative reserved estimate rather than letting cost
-  // collapse to min_charge (same rule as the chat route).
-  let credits: number;
-  let vendorUsd: number | null;
+  // Settlement MUST come from real usage. With no usage object there is no real
+  // cost to bill, so nothing is charged and nothing is delivered: release the
+  // hold and report a failed generation.
   if (typeof usage.prompt_tokens !== 'number' || usage.prompt_tokens <= 0) {
-    credits = estCredits;
-    vendorUsd = null;
-  } else {
-    vendorUsd = costFromOpenAiUsage(usage, model, pricing);
-    credits = usdToCredits(vendorUsd, pricing);
+    try {
+      const balance = await refund(requestId, 0, null);
+      return j({ error: 'generation_failed', balance }, 502);
+    } catch {
+      return j({ error: 'generation_failed' }, 502);
+    }
   }
+  const vendorUsd = costFromOpenAiUsage(usage, model, pricing);
+  const credits = usdToCredits(vendorUsd, pricing);
 
   // The model has run, so the work is delivered either way. If the ledger stays
   // unreachable the charge is lost, but failing the request would only make the

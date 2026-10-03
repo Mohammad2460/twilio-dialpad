@@ -30,6 +30,8 @@ export interface CallEntry {
   startedAt: number;
   durationSec: number;
   status: CallRecord['status'];
+  /** Incoming call the user declined. */
+  declined?: boolean;
   contactName?: string;
   segments?: TranscriptSegment[];
   insight?: CallInsight;
@@ -52,9 +54,30 @@ export interface CallDigest {
 const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** Same chars/4 heuristic the backend uses for its request cap. */
+/**
+ * Size of a text in quarter-tokens: 1 per ASCII character, 4 per character of
+ * any other script (Arabic, CJK, Cyrillic… run about one token per character).
+ * Same rule as the backend's request cap (backend/lib/pricing.ts).
+ */
+function weight(text: string): number {
+  let nonAscii = 0;
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) > 0x7f) nonAscii++;
+  return text.length + 3 * nonAscii;
+}
+
 export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
+  return Math.ceil(weight(text) / 4);
+}
+
+/** Longest prefix of `text` that fits in `maxTokens`. */
+export function truncateToTokens(text: string, maxTokens: number): string {
+  const max = maxTokens * 4;
+  let w = 0;
+  for (let i = 0; i < text.length; i++) {
+    w += text.charCodeAt(i) > 0x7f ? 4 : 1;
+    if (w > max) return text.slice(0, i);
+  }
+  return text;
 }
 
 /** Local calendar date, YYYY-MM-DD. */
@@ -134,6 +157,7 @@ export function mergeCalls(
       startedAt: h.startedAt,
       durationSec: h.durationSec,
       status: h.status,
+      ...(h.declined ? { declined: true } : {}),
       contactName: h.contact?.name,
     });
   }
@@ -175,8 +199,9 @@ export function buildCallDigest(
   calls: CallEntry[],
   opts: { now: number; budgetTokens?: number; perCallTokens?: number; maxCalls?: number },
 ): CallDigest {
-  const budgetChars = (opts.budgetTokens ?? 40_000) * 4;
-  const perCallChars = (opts.perCallTokens ?? 8_000) * 4;
+  // Budgets are in quarter-tokens (see weight()).
+  const budget = (opts.budgetTokens ?? 40_000) * 4;
+  const perCallTokens = opts.perCallTokens ?? 8_000;
   const maxCalls = opts.maxCalls ?? 150;
 
   const today = `Today: ${DAYS[new Date(opts.now).getDay()]} ${localDate(opts.now)}`;
@@ -189,13 +214,14 @@ export function buildCallDigest(
 
   // Headers first — they are cheap and every call should at least be listed.
   const SEP = 2; // "\n\n" between blocks
-  let used = today.length;
+  let used = weight(today);
   const picked: { ref: string; call: CallEntry; header: string }[] = [];
   for (const call of calls.slice(0, maxCalls)) {
     const ref = `C${picked.length + 1}`;
     const header = headerLine(ref, call);
-    if (used + SEP + header.length > budgetChars) break;
-    used += SEP + header.length;
+    const cost = SEP + weight(header);
+    if (used + cost > budget) break;
+    used += cost;
     picked.push({ ref, call, header });
   }
 
@@ -214,21 +240,21 @@ export function buildCallDigest(
 
     if (call.segments?.length) {
       let transcript = formatTranscriptText(call.segments);
-      if (transcript.length > perCallChars) {
-        transcript = transcript.slice(0, perCallChars - TRUNCATED.length) + TRUNCATED;
+      if (estimateTokens(transcript) > perCallTokens) {
+        transcript = truncateToTokens(transcript, perCallTokens - estimateTokens(TRUNCATED)) + TRUNCATED;
       }
       const full = `${notes ? `${notes}\n` : ''}Transcript:\n${transcript}`;
-      if (used + 1 + full.length <= budgetChars) {
+      if (used + 1 + weight(full) <= budget) {
         body = full;
         stats.full += 1;
       }
     }
-    if (!body && notes && used + 1 + notes.length <= budgetChars) {
+    if (!body && notes && used + 1 + weight(notes) <= budget) {
       body = notes;
       stats.notes += 1;
     }
     if (!body) stats.headerOnly += 1;
-    else used += 1 + body.length;
+    else used += 1 + weight(body);
 
     blocks.push(body ? `${header}\n${body}` : header);
   }

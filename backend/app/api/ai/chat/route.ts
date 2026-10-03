@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import {
   getActivePricing,
   estimateLlmCredits,
+  estimateTokens,
   enforceLlmCaps,
   costFromAnthropicUsage,
   costFromOpenAiUsage,
@@ -20,7 +21,7 @@ import {
   type AnthropicUsage,
   type OpenAiUsage,
 } from '@/lib/credits';
-import { chatSystemPrompt, sanitizeTurns, type ChatMode } from '@/lib/ai-prompts';
+import { chatDataMessage, chatSystemPrompt, sanitizeTurns, type ChatMode } from '@/lib/ai-prompts';
 import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
@@ -108,11 +109,14 @@ export async function POST(req: NextRequest) {
 
   const mode: ChatMode =
     body.mode && MODES.includes(body.mode) ? body.mode : transcript ? 'call' : 'general';
-  const system = chatSystemPrompt(mode, { transcript, context });
+  const system = chatSystemPrompt(mode);
+  // Call data rides as the first user message, ahead of the conversation.
+  const data = chatDataMessage(mode, { transcript, context });
+  const messages = [...(data ? [{ role: 'user' as const, content: data }] : []), ...turns];
 
-  // Estimate input tokens for the reservation hold (chars/4 heuristic, upper-bounded).
-  const promptChars = system.length + turns.reduce((n, m) => n + m.content.length, 0);
-  const estInputTokens = Math.ceil(promptChars / 4);
+  // Estimate input tokens for the cap and the reservation hold.
+  const estInputTokens =
+    estimateTokens(system) + messages.reduce((n, m) => n + estimateTokens(m.content), 0);
   const maxOut = pricing.caps.max_output_tokens;
 
   try {
@@ -184,7 +188,7 @@ export async function POST(req: NextRequest) {
               stream_options: { include_usage: true },
               messages: [
                 { role: 'system', content: system },
-                ...turns.map((m) => ({ role: m.role, content: m.content })),
+                ...messages.map((m) => ({ role: m.role, content: m.content })),
               ],
             });
             let usage: OpenAiUsage = {};
@@ -209,7 +213,7 @@ export async function POST(req: NextRequest) {
               model,
               max_tokens: maxOut,
               system,
-              messages: turns.map((m) => ({ role: m.role, content: m.content })),
+              messages: messages.map((m) => ({ role: m.role, content: m.content })),
             });
             ant.on('text', (delta) => send('delta', { text: delta }));
             const final = await ant.finalMessage();

@@ -30,6 +30,8 @@ export interface CallRecord {
   startedAt: number;
   durationSec: number;
   status: 'completed' | 'missed' | 'failed';
+  /** Incoming call the user declined (status stays 'missed'). */
+  declined?: boolean;
   hasTranscript?: boolean;
   contact?: ContactInfo; // snapshot at time of call (for offline lookups)
 }

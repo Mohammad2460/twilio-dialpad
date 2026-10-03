@@ -55,6 +55,7 @@ const CallRecordSchema = z.object({
   startedAt: z.number(),
   durationSec: z.number(),
   status: z.enum(['completed', 'missed', 'failed']),
+  declined: z.boolean().optional(),
   hasTranscript: z.boolean().optional(),
   contact: z.object({
     id: z.string(),

@@ -10,7 +10,7 @@ import {
   sameNumber,
   todayBrief,
 } from '../../src/shared/insights-core';
-import type { CallEntry } from '../../src/shared/ai-context';
+import { estimateTokens, type CallEntry } from '../../src/shared/ai-context';
 import type { CallInsight, CallPromise, Transcript, TranscriptSegment } from '../../src/shared/types';
 
 beforeAll(() => {
@@ -161,6 +161,22 @@ describe('todayBrief', () => {
     ]);
   });
 
+  it('keeps a missed call listed when the call-back never connected', () => {
+    const calls = [
+      call({ key: 'm1', direction: 'in', status: 'missed', durationSec: 0, number: '+14155550111', startedAt: NOW - 3 * HOUR }),
+      call({ key: 'f1', direction: 'out', status: 'failed', durationSec: 0, number: '+14155550111', startedAt: NOW - 2 * HOUR }),
+      call({ key: 'f2', direction: 'out', status: 'missed', durationSec: 0, number: '+14155550111', startedAt: NOW - 1 * HOUR }),
+    ];
+    expect(todayBrief(calls, NOW).missed.map((m) => m.number)).toEqual(['+14155550111']);
+  });
+
+  it('does not list calls the user declined', () => {
+    const calls = [
+      call({ key: 'd1', direction: 'in', status: 'missed', declined: true, durationSec: 0, number: '+14155550111', startedAt: NOW - HOUR }),
+    ];
+    expect(todayBrief(calls, NOW).missed).toEqual([]);
+  });
+
   it('is empty when there is nothing to do', () => {
     expect(todayBrief([call({ key: 'h1' })], NOW)).toEqual({ due: [], missed: [] });
   });
@@ -253,6 +269,14 @@ describe('isSummarizable / insightRequestBody', () => {
       segments: Array.from({ length: 5000 }, (_, i) => seg('user', 'word '.repeat(20), i * 1000)),
     });
     expect(body.transcript.length).toBeLessThanOrEqual(180_000);
+  });
+
+  it('caps non-Latin transcripts by tokens, not characters', () => {
+    const body = insightRequestBody({
+      ...base,
+      segments: Array.from({ length: 5000 }, (_, i) => seg('user', 'مرحبا '.repeat(20), i * 1000)),
+    });
+    expect(estimateTokens(body.transcript)).toBeLessThanOrEqual(45_000);
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, vi } from 'vitest';
 import {
   buildCallDigest,
   estimateTokens,
+  truncateToTokens,
   formatTranscriptText,
   localDate,
   mergeCalls,
@@ -204,5 +205,14 @@ describe('splitCitations', () => {
 
   it('returns plain text untouched', () => {
     expect(splitCitations('No calls match.')).toEqual([{ type: 'text', text: 'No calls match.' }]);
+  });
+});
+
+describe('token budget for non-Latin text', () => {
+  it('counts other scripts at one token per character and truncates to fit', () => {
+    expect(estimateTokens('abcdefgh')).toBe(2);
+    expect(estimateTokens('你好你好')).toBe(4);
+    expect(truncateToTokens('你好你好你好', 4)).toBe('你好你好');
+    expect(truncateToTokens('abcdefghij', 2)).toBe('abcdefgh');
   });
 });

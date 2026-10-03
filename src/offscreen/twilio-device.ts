@@ -443,7 +443,8 @@ export class DeviceManager {
     });
     call.on('reject', async () => {
       await finalizeTranscription();
-      emitCallState({ state: 'closed', direction, durationSec: 0, sid: call.parameters.CallSid });
+      // 'reject' fires only when the local user declined the call.
+      emitCallState({ state: 'closed', direction, durationSec: 0, sid: call.parameters.CallSid, declined: true });
       storeSet({ callState: null });
       this.call = null;
     });

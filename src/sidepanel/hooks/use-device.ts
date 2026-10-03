@@ -83,6 +83,7 @@ export function useDevice() {
           sid?: string;
           durationSec?: number;
           error?: string;
+          declined?: boolean;
         };
         if (!cs.state || cs.state === 'closed') {
           // Snapshot the active call BEFORE clearing so we can build CallRecord.
@@ -218,7 +219,7 @@ export function useDevice() {
  */
 async function persistEndedCall(
   active: { direction: 'in' | 'out'; remoteNumber: string; startedAt: number; contact?: import('@shared/types').ContactInfo },
-  cs: { sid?: string; durationSec?: number; error?: string },
+  cs: { sid?: string; durationSec?: number; error?: string; declined?: boolean },
 ): Promise<void> {
   if (!cs.sid) return;
 
@@ -240,6 +241,7 @@ async function persistEndedCall(
     startedAt: Date.now() - durationSec * 1000,
     durationSec,
     status: cs.error ? 'failed' : durationSec > 0 ? 'completed' : 'missed',
+    ...(cs.declined ? { declined: true } : {}),
     hasTranscript: !!transcript,
     contact: active.contact,
   };

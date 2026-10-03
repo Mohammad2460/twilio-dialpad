@@ -7,7 +7,7 @@
  * creating an insight (and chat) ever calls the model.
  */
 import { z } from 'zod';
-import { formatTranscriptText, localDate, type CallEntry } from './ai-context';
+import { formatTranscriptText, localDate, truncateToTokens, type CallEntry } from './ai-context';
 import type { CallDirection, CallInsight, CallPromise, InsightAttempt, Transcript } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -16,8 +16,8 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const FRESH_PROMISE_MS = 3 * DAY_MS;
 /** Missed calls older than this are no longer "call back" candidates. */
 const MISSED_WINDOW_MS = 7 * DAY_MS;
-/** Request-size guard: ~45k tokens, under the backend's per-request cap. */
-const MAX_TRANSCRIPT_CHARS = 180_000;
+/** Request-size guard, under the backend's per-request cap. */
+const MAX_TRANSCRIPT_TOKENS = 45_000;
 /** Below this there is no conversation worth summarising (voicemail, no answer). */
 const MIN_TRANSCRIPT_CHARS = 200;
 
@@ -119,7 +119,7 @@ export interface InsightRequestBody {
 
 export function insightRequestBody(t: Transcript): InsightRequestBody {
   return {
-    transcript: formatTranscriptText(t.segments, { timestamps: true }).slice(0, MAX_TRANSCRIPT_CHARS),
+    transcript: truncateToTokens(formatTranscriptText(t.segments, { timestamps: true }), MAX_TRANSCRIPT_TOKENS),
     callDate: localDate(t.startedAt),
     direction: t.direction,
     ...(t.contactSnapshot?.name ? { contactName: t.contactSnapshot.name } : {}),
@@ -190,7 +190,8 @@ export function todayBrief(calls: CallEntry[], now: number): TodayBrief {
 
   const missedByNumber = new Map<string, MissedItem>();
   for (const c of calls) {
-    if (c.direction !== 'in' || c.status !== 'missed') continue;
+    // A call the user declined was seen, not missed.
+    if (c.direction !== 'in' || c.status !== 'missed' || c.declined) continue;
     if (now - c.startedAt > MISSED_WINDOW_MS) continue;
     const key = numberKey(c.number);
     if (!key) continue;
@@ -214,8 +215,10 @@ export function todayBrief(calls: CallEntry[], now: number): TodayBrief {
       (m) =>
         !calls.some(
           (c) =>
+            // Returned = we actually spoke afterwards. A call-back that failed
+            // or rang out leaves the number on the list.
             c.startedAt > m.lastMissedAt &&
-            (c.direction === 'out' || c.status === 'completed') &&
+            c.status === 'completed' &&
             sameNumber(c.number, m.number),
         ),
     )

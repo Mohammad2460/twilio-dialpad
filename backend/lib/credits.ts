@@ -24,6 +24,7 @@ export {
   costFromOpenAiUsage,
   costFromDeepgramMinutes,
   estimateLlmCredits,
+  estimateTokens,
   estimateTranscriptionCredits,
   enforceLlmCaps,
   providerForModel,
