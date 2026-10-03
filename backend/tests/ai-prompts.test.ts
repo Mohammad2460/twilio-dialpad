@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { estimateTokens } from '../lib/pricing';
 import {
+  describeVendorError,
   chatDataMessage,
   chatSystemPrompt,
   insightUserPrompt,
@@ -169,5 +170,23 @@ describe('sanitizeTurns', () => {
   it('returns [] for non-arrays', () => {
     expect(sanitizeTurns(undefined)).toEqual([]);
     expect(sanitizeTurns('x')).toEqual([]);
+  });
+});
+
+describe('describeVendorError', () => {
+  it('keeps status, code, type and a short message', () => {
+    const e = Object.assign(new Error('The model `x` does not exist'), { status: 404, code: 'model_not_found', type: 'invalid_request_error' });
+    expect(describeVendorError(e)).toEqual({
+      status: 404,
+      code: 'model_not_found',
+      type: 'invalid_request_error',
+      message: 'The model `x` does not exist',
+    });
+  });
+
+  it('caps the message and copes with non-errors', () => {
+    expect(describeVendorError(new Error('x'.repeat(2000))).message.length).toBe(300);
+    expect(describeVendorError('boom')).toEqual({ message: 'boom' });
+    expect(describeVendorError(new TypeError('fetch failed'))).toEqual({ type: 'TypeError', message: 'fetch failed' });
   });
 });
