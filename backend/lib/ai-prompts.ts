@@ -31,7 +31,7 @@ function withoutMarkers(text: string): string {
 /** One line of plain text: no line breaks or control characters, no markers. */
 function oneLine(text: string): string {
   return withoutMarkers(text)
-    .replace(/[\u0000-\u001f\u007f\u2028\u2029]+/g, ' ')
+    .replace(/[\p{Cc}\u2028\u2029]+/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
