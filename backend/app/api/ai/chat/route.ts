@@ -20,6 +20,7 @@ import {
   type AnthropicUsage,
   type OpenAiUsage,
 } from '@/lib/credits';
+import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
 
@@ -47,7 +48,7 @@ interface ChatBody {
   transcript?: string;
   /** Prior chat turns in this thread (user/assistant). */
   messages?: { role: 'user' | 'assistant'; content: string }[];
-  /** Per-message idempotency key from the client (dedupes reserve on retry). */
+  /** Per-message key from the client — a trace prefix only (see reservationKey). */
   idempotencyKey?: string;
   /** 'call' = coach over a transcript; 'general' = open dialer assistant. */
   mode?: 'call' | 'general';
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
   }
 
   const estCredits = estimateLlmCredits(estInputTokens, model, pricing);
-  const idemKey = body.idempotencyKey ?? crypto.randomUUID();
+  const idemKey = reservationKey('chat', body.idempotencyKey);
 
   let requestId: string;
   try {

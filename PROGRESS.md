@@ -3,7 +3,7 @@
 > Current state only. History lives in git (`git log`) and merged PRs — don't re-grow a changelog here.
 > **Plan of record:** [`docs/strategy/relaunch-plan.md`](docs/strategy/relaunch-plan.md) (AI assistant, pricing, growth, distribution, 2.0 roadmap).
 
-_Last updated: 2026-09-29._
+_Last updated: 2026-10-04._
 
 ## Status
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
@@ -25,6 +25,7 @@ _Last updated: 2026-09-29._
 - [x] Store package built, audited (manifest, permissions diff, no secrets/dev URLs/remote code), submitted.
 - [ ] **Privacy policy page** — PR #19 serves it at `https://dialler-mcp.vercel.app/privacy`; must be merged for the store listing link to work.
 - [ ] After approval: install from the store on a clean profile; check setup screen + side panel.
+- [ ] **Owner: run `scripts/migration-credits-settle-hardening.sql`** in the Supabase SQL editor (function-only, idempotent, safe before or after the backend deploy). Ships with the transcription metering change below.
 - [ ] Real call test needs a working Twilio account (owner's Twilio account is suspended; a free Twilio trial on another email works).
 
 ## Owner dev access (no Twilio needed)
@@ -34,6 +35,7 @@ Owner logs in to their real account via a manually created device row (label `de
 - Calls: BYO-Twilio. New installs = backend-hosted voice (`/api/voice/token`, `/api/voice/twiml`); ≤1.2.0 installs = legacy per-user Twilio Function (Twilio's Node 22 default applies to any rebuild; deployed Functions keep running).
 - Hidden via `src/shared/flags.ts`: in-extension AI chat (`AI_CHAT_ENABLED`), BYO Deepgram. SMS UI removed (backend routes dormant).
 - Live: dialer, history, auto-dialer (CSV, 100 cap), recording, managed transcription, Claude MCP connector (`/api/mcp/[userId]`), Pro $9/mo + 7-day trial via Dodo (new pricing in the plan is not built yet).
+- Managed transcription metering: each window's reservation is created and settled from backend-held state (`backend/lib/transcribe-metering.ts`, `transcribe-settle.ts`); works with 1.3.0/1.4.0 clients unchanged.
 - Prod DB: `anon`/`authenticated` roles have no grants (only the backend's service role touches the DB); telemetry views are `security_invoker`.
 
 ## Known follow-ups (not blocking)
@@ -42,6 +44,8 @@ Owner logs in to their real account via a manually created device row (label `de
 - 13 DB functions still have a mutable `search_path` (low-priority Supabase advisor warning).
 - Backend SMS routes dormant; `/api/users` is a deprecated anonymous-user endpoint kept for old builds.
 - Backend `npm audit`: postcss inside `next@15.5.x` (build-time only; fix = Next 16).
+- Managed transcription: reconcile billed windows against Deepgram usage (design item for 2.0).
+- Future client build: settle a window right away when its Deepgram connect fails, so the hold is released instead of waiting for the reaper.
 - Owner action: fund the Anthropic account before offering Claude models.
 
 ## Working rules
