@@ -1,6 +1,8 @@
 import { describe, it, expect, beforeAll, vi } from 'vitest';
 import {
+  attemptAfterFailure,
   briefForNumber,
+  canAutoSummarize,
   collectPromises,
   insightRequestBody,
   isSummarizable,
@@ -251,5 +253,40 @@ describe('isSummarizable / insightRequestBody', () => {
       segments: Array.from({ length: 5000 }, (_, i) => seg('user', 'word '.repeat(20), i * 1000)),
     });
     expect(body.transcript.length).toBeLessThanOrEqual(180_000);
+  });
+});
+
+describe('canAutoSummarize / attemptAfterFailure', () => {
+  const pending = { at: NOW, n: 1, state: 'pending' as const };
+
+  it('allows a call that was never requested', () => {
+    expect(canAutoSummarize({})).toBe(true);
+  });
+
+  it('never repeats a call that has notes, an unknown outcome or unusable output', () => {
+    expect(canAutoSummarize({ insight: insight([]) })).toBe(false);
+    expect(canAutoSummarize({ insightAttempt: pending })).toBe(false);
+    expect(canAutoSummarize({ insightAttempt: { ...pending, state: 'failed' } })).toBe(false);
+  });
+
+  it('retries a request that ended before the model ran, up to the limit', () => {
+    expect(canAutoSummarize({ insightAttempt: { at: NOW, n: 2, state: 'retry' } })).toBe(true);
+    expect(canAutoSummarize({ insightAttempt: { at: NOW, n: 3, state: 'retry' } })).toBe(false);
+  });
+
+  it('keeps the right marker after a failed request', () => {
+    const previous = { at: NOW - HOUR, n: 1, state: 'retry' as const };
+    const claimed = { at: NOW, n: 2, state: 'pending' as const };
+    // Refused before any work: the try does not count.
+    expect(attemptAfterFailure(pending, undefined, { status: 402, error: 'insufficient_credits' })).toBeUndefined();
+    expect(attemptAfterFailure(claimed, previous, { status: 401, error: 'Unauthorized' })).toEqual(previous);
+    // Model ran, output unusable: manual only.
+    expect(attemptAfterFailure(claimed, previous, { status: 502, error: 'bad_output' })?.state).toBe('failed');
+    // Anything else: retry later, counted.
+    expect(attemptAfterFailure(claimed, previous, { status: 502, error: 'generation_failed' })).toEqual({
+      ...claimed,
+      state: 'retry',
+    });
+    expect(attemptAfterFailure(claimed, previous, { status: 0, error: 'network' })?.state).toBe('retry');
   });
 });

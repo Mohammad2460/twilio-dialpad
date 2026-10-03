@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { buildCallDigest, mergeCalls, type CallDigest } from '@shared/ai-context';
 import { collectPromises, todayBrief } from '@shared/insights-core';
 import { storage } from '@shared/storage';
@@ -17,8 +17,6 @@ const SUGGESTIONS = [
   'What did I promise people this week?',
 ];
 
-const NOTICE_KEY = 'aiNoticeSeen';
-
 /**
  * AI tab: what needs attention today, open promises, and chat over the user's
  * calls. Today and promises are computed locally from stored call notes — only
@@ -29,14 +27,6 @@ export function AiTab() {
   const setView = useCallStore((s) => s.setView);
   const [detailFor, setDetailFor] = useState<string | null>(null);
   const [showClaude, setShowClaude] = useState(false);
-  const [noticeSeen, setNoticeSeen] = useState(true);
-
-  useEffect(() => {
-    chrome.storage.local
-      .get(NOTICE_KEY)
-      .then((got) => setNoticeSeen(!!got[NOTICE_KEY]))
-      .catch(() => {});
-  }, []);
 
   const brief = useMemo(() => todayBrief(calls, Date.now()), [calls]);
   const promises = useMemo(() => collectPromises(calls), [calls]);
@@ -48,11 +38,6 @@ export function AiTab() {
     const [history, all] = await Promise.all([storage.getHistory(), transcripts.list(150)]);
     return buildCallDigest(mergeCalls(history, all), { now: Date.now() });
   }, []);
-
-  function dismissNotice() {
-    setNoticeSeen(true);
-    chrome.storage.local.set({ [NOTICE_KEY]: true }).catch(() => {});
-  }
 
   if (showClaude) {
     return (
@@ -92,23 +77,6 @@ export function AiTab() {
 
   return (
     <div className="flex h-full flex-col">
-      {!noticeSeen && (
-        <div className="border-b border-brand-100 bg-brand-50 px-3 py-2">
-          <p className="text-[11px] leading-relaxed text-gray-700">
-            AI reads your call transcripts to summarize calls and answer your questions. To do that,
-            transcript text is sent to our AI provider. You can turn off automatic summaries in
-            Settings.
-          </p>
-          <button
-            type="button"
-            onClick={dismissNotice}
-            className="mt-1 text-[11px] font-semibold text-brand-700 hover:underline"
-          >
-            Got it
-          </button>
-        </div>
-      )}
-
       {!hasTranscripts && (
         <div className="border-b border-amber-100 bg-amber-50 px-3 py-2">
           <p className="text-[11px] leading-relaxed text-amber-900">

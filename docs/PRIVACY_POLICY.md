@@ -66,7 +66,8 @@ The extension includes an AI assistant that summarises your transcribed calls an
 
 | When | What is sent | Where |
 |------|--------------|-------|
-| After a transcribed call ends (automatic call summaries — on by default, switch off in **Settings**) | That call's transcript text, the call date, call direction and the contact name if known | Our backend, which passes it to our AI provider (OpenAI) to produce the summary |
+| Automatic call summaries: after a transcribed call ends, and when the side panel opens for recent transcribed calls (last 14 days) that have no notes yet. Starts only after you choose **Turn on** in the one-time notice; switch off any time in **Settings** | That call's transcript text, the call date, call direction and the contact name if known | Our backend, which passes it to our AI provider (OpenAI) to produce the summary |
+| When you press **Summarize** on a call | The same as an automatic summary, for that call | Same as above |
 | When you ask the assistant a question | Your question plus text from your recent calls (transcripts, AI notes, and call details such as number, contact name, date and duration) | Our backend, which passes it to our AI provider (OpenAI) to produce the answer |
 
 - This feature does **not** store your transcripts or questions on our backend — they are passed through to produce the result. (Cloud sync, section B, is separate.)
@@ -75,6 +76,7 @@ The extension includes an AI assistant that summarises your transcribed calls an
 - We record how many AI credits each request used. We do not record its content.
 - OpenAI processes the text under its API terms; see [OpenAI's API data usage policy](https://openai.com/policies/api-data-usage-policies). No audio is ever sent.
 - Calls without a transcript are never sent for summarising.
+- Nothing is sent automatically until you have answered the one-time notice. Choosing **No thanks** turns automatic summaries off.
 
 ### C. Sent to Twilio (always, regardless of subscription)
 

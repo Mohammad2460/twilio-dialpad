@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { corsHeaders } from '@/lib/cors';
@@ -13,7 +13,7 @@ import {
   providerForModel,
   usdToCredits,
   reserve,
-  settle,
+  settleWithRetry,
   refund,
   CapExceededError,
   InsufficientCreditsError,
@@ -136,76 +136,109 @@ export async function POST(req: NextRequest) {
     throw e;
   }
 
+  // Generation and settlement run to completion even when the client stops
+  // reading: what is charged depends on what the vendor produced, never on
+  // whether the client stayed connected. `after` keeps the function alive for it.
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => (finish = resolve));
+  after(() => finished);
+
   // Stream the completion to the client; accumulate usage for settlement.
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: string, data: unknown) =>
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      let clientGone = false;
+      const send = (event: string, data: unknown) => {
+        if (clientGone) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          clientGone = true;
+        }
+      };
+      const close = () => {
+        try {
+          controller.close();
+        } catch {
+          /* already closed by the client */
+        }
+      };
+
       try {
         // Vendor-specific streaming; both paths must yield a real USD cost from
         // the API's own usage object (never an estimate) for settlement.
-        let vendorUsd: number;
-        if (provider === 'openai') {
-          const oai = new OpenAI({ apiKey });
-          const completion = await oai.chat.completions.create({
-            model,
-            // gpt-5 family: MUST use max_completion_tokens (not max_tokens) and
-            // MUST NOT send temperature/top_p (only defaults accepted → else 400).
-            max_completion_tokens: maxOut,
-            // Reasoning tokens bill as output and delay the first token; Q&A over
-            // supplied call data does not need more than a light pass.
-            ...(model.startsWith('gpt-5') ? { reasoning_effort: 'low' as const } : {}),
-            stream: true,
-            stream_options: { include_usage: true },
-            messages: [
-              { role: 'system', content: system },
-              ...turns.map((m) => ({ role: m.role, content: m.content })),
-            ],
-          });
-          let usage: OpenAiUsage = {};
-          for await (const chunk of completion) {
-            const delta = chunk.choices[0]?.delta?.content;
-            if (delta) send('delta', { text: delta });
-            if (chunk.usage) usage = chunk.usage as OpenAiUsage;
+        let credits: number;
+        let vendorUsd: number | null;
+        try {
+          if (provider === 'openai') {
+            const oai = new OpenAI({ apiKey });
+            const completion = await oai.chat.completions.create({
+              model,
+              // gpt-5 family: MUST use max_completion_tokens (not max_tokens) and
+              // MUST NOT send temperature/top_p (only defaults accepted → else 400).
+              max_completion_tokens: maxOut,
+              // Reasoning tokens bill as output and delay the first token; Q&A over
+              // supplied call data does not need more than a light pass.
+              ...(model.startsWith('gpt-5') ? { reasoning_effort: 'low' as const } : {}),
+              stream: true,
+              stream_options: { include_usage: true },
+              messages: [
+                { role: 'system', content: system },
+                ...turns.map((m) => ({ role: m.role, content: m.content })),
+              ],
+            });
+            let usage: OpenAiUsage = {};
+            for await (const chunk of completion) {
+              const delta = chunk.choices[0]?.delta?.content;
+              if (delta) send('delta', { text: delta });
+              if (chunk.usage) usage = chunk.usage as OpenAiUsage;
+            }
+            // Settlement MUST come from real usage. If the stream finished without a
+            // usage chunk (proxy/gateway dropped include_usage, early finish, etc.),
+            // we have no real cost — bill the conservative reserved estimate rather
+            // than letting cost collapse to 0/min_charge (metering bypass). C1.
+            if (typeof usage.completion_tokens !== 'number' || usage.completion_tokens <= 0) {
+              vendorUsd = null;
+              credits = estCredits;
+            } else {
+              vendorUsd = costFromOpenAiUsage(usage, model, pricing);
+              credits = usdToCredits(vendorUsd, pricing);
+            }
+          } else {
+            const ant = new Anthropic({ apiKey }).messages.stream({
+              model,
+              max_tokens: maxOut,
+              system,
+              messages: turns.map((m) => ({ role: m.role, content: m.content })),
+            });
+            ant.on('text', (delta) => send('delta', { text: delta }));
+            const final = await ant.finalMessage();
+            vendorUsd = costFromAnthropicUsage(final.usage as AnthropicUsage, model, pricing);
+            credits = usdToCredits(vendorUsd, pricing);
           }
-          // Settlement MUST come from real usage. If the stream finished without a
-          // usage chunk (proxy/gateway dropped include_usage, early finish, etc.),
-          // we have no real cost — bill the conservative reserved estimate rather
-          // than letting cost collapse to 0/min_charge (metering bypass). C1.
-          if (typeof usage.completion_tokens !== 'number' || usage.completion_tokens <= 0) {
-            const balance = await settle(requestId, estCredits, null, model);
-            send('done', { credits: estCredits, balance });
-            controller.close();
-            return;
+        } catch {
+          // The vendor call itself failed — no usage captured, release the hold.
+          try {
+            const balance = await refund(requestId, 0, null);
+            send('error', { error: 'generation_failed', balance });
+          } catch {
+            send('error', { error: 'generation_failed' });
           }
-          vendorUsd = costFromOpenAiUsage(usage, model, pricing);
-        } else {
-          const ant = new Anthropic({ apiKey }).messages.stream({
-            model,
-            max_tokens: maxOut,
-            system,
-            messages: turns.map((m) => ({ role: m.role, content: m.content })),
-          });
-          ant.on('text', (delta) => send('delta', { text: delta }));
-          const final = await ant.finalMessage();
-          vendorUsd = costFromAnthropicUsage(final.usage as AnthropicUsage, model, pricing);
+          return;
         }
 
-        const actualCredits = usdToCredits(vendorUsd, pricing);
-        const balance = await settle(requestId, actualCredits, vendorUsd, model);
-        send('done', { credits: actualCredits, balance });
-        controller.close();
-      } catch (err) {
-        // Generation failed/partial — refund the hold (no vendor usage captured here,
-        // so treat as fully unincurred; a partial that still billed is rare for chat).
+        // The answer is already delivered; a ledger error here must not turn
+        // into a refund of work the vendor has billed.
         try {
-          const balance = await refund(requestId, 0, null);
-          send('error', { error: 'generation_failed', balance });
-        } catch {
-          send('error', { error: 'generation_failed' });
+          const balance = await settleWithRetry(requestId, credits, vendorUsd, model);
+          send('done', { credits, balance });
+        } catch (e) {
+          console.error('[ai/chat] settle failed', requestId, e instanceof Error ? e.message : e);
+          send('done', { credits });
         }
-        controller.close();
+      } finally {
+        close();
+        finish();
       }
     },
   });

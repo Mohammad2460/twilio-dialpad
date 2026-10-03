@@ -12,7 +12,7 @@ _Last updated: 2026-10-04._
 
 ## AI assistant v1 (1.4.0)
 Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
-- **Call notes** — after each transcribed call the extension asks the backend (`POST /api/ai/summarize`, `gpt-5-mini`, credit-metered) for a summary, objections, promises and a next step. Stored on the transcript record in IndexedDB (`Transcript.insight`), local only. Backfills up to 5 recent calls when the panel opens. Settings toggle: "Automatic call summaries" (default on).
+- **Call notes** — after each transcribed call the extension asks the backend (`POST /api/ai/summarize`, `gpt-5-mini`, credit-metered) for a summary, objections, promises and a next step. Stored on the transcript record in IndexedDB (`Transcript.insight`), local only. Backfills up to 5 recent calls when the panel opens. Settings toggle: "Automatic call summaries" (default on), but nothing is sent automatically until the user answers the one-time app-wide notice (`AiNotice`). Each request leaves a marker on the transcript (`Transcript.insightAttempt`) so a call is not requested twice automatically; after an unknown or unusable result only the manual "Summarize" button retries.
 - **AI tab** — Today (promises due, missed calls not returned) + open promises (check-off) + chat. Today/promises/brief are computed locally from the notes — no AI call.
 - **Chat** — `POST /api/ai/chat` with `mode: 'calls'`; the extension sends a call digest (`src/shared/ai-context.ts`, ~40k-token budget, newest first). Answers cite `[C#]`, rendered as chips that open the call.
 - **Pre-call brief** — keypad (typed number has history) and incoming-call screen.

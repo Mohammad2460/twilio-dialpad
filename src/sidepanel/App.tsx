@@ -18,6 +18,7 @@ import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 import { TrialStartPopup } from './components/TrialStartPopup';
 import { TrialBanner } from './components/TrialBanner';
 import { ReconnectBanner } from './components/ReconnectBanner';
+import { AiNotice } from './components/AiNotice';
 import { getEntitlements, type Entitlements } from '@shared/entitlements';
 
 export function App() {
@@ -63,6 +64,7 @@ export function App() {
       <ReconnectBanner settings={settings} />
       <FolderPermissionBanner />
       <TrialStartPopup />
+      {AI_CHAT_ENABLED && <AiNotice />}
       {showTrialBanner && <TrialBanner userId={cloudUserId} daysLeft={ent.daysLeft!} />}
       <main className="flex-1 overflow-y-auto">
         {activeCall?.phase === 'ringing' && activeCall.direction === 'in' ? (

@@ -59,12 +59,28 @@ export interface Transcript {
   createdAt: number;
   /** AI notes for this call. Absent until summarised (or when AI summaries are off). */
   insight?: CallInsight;
+  /** Last summary request that did not produce notes. Cleared once notes exist. */
+  insightAttempt?: InsightAttempt;
 }
 
 /** A transcript without its segment bodies — cheap to list in bulk. */
 export type TranscriptMeta = Omit<Transcript, 'segments'>;
 
 // ── AI call insight ──────────────────────────────────────────────
+
+/**
+ * Durable record of a summary request, kept on the transcript so a call is
+ * never requested twice automatically — across panel sessions and windows.
+ *   pending — request sent, outcome unknown (in flight, or the panel closed first)
+ *   retry   — ended before the model ran; may be retried automatically
+ *   failed  — the model ran but its output was unusable; manual retry only
+ */
+export interface InsightAttempt {
+  at: number;
+  /** Requests made so far for this call. */
+  n: number;
+  state: 'pending' | 'retry' | 'failed';
+}
 
 /** A commitment made on a call. `done` is the user's own check-off. */
 export interface CallPromise {

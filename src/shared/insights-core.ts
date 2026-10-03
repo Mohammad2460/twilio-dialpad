@@ -8,7 +8,7 @@
  */
 import { z } from 'zod';
 import { formatTranscriptText, localDate, type CallEntry } from './ai-context';
-import type { CallDirection, CallInsight, CallPromise, Transcript } from './types';
+import type { CallDirection, CallInsight, CallPromise, InsightAttempt, Transcript } from './types';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -79,6 +79,35 @@ export function isSummarizable(t: Transcript): boolean {
   const chars = finals.reduce((n, s) => n + s.text.length, 0);
   const bothSpoke = finals.some((s) => s.speaker === 'user') && finals.some((s) => s.speaker === 'remote');
   return bothSpoke && chars >= MIN_TRANSCRIPT_CHARS;
+}
+
+/** Automatic requests per call, counting only ones that ended before the model ran. */
+export const MAX_AUTO_ATTEMPTS = 3;
+
+/**
+ * May this call be summarised without the user asking? Not once it has notes,
+ * and not after a request whose outcome is unknown or whose output was unusable
+ * — those may already have been charged, so only the user can ask again.
+ */
+export function canAutoSummarize(t: Pick<Transcript, 'insight' | 'insightAttempt'>): boolean {
+  if (t.insight) return false;
+  const a = t.insightAttempt;
+  return !a || (a.state === 'retry' && a.n < MAX_AUTO_ATTEMPTS);
+}
+
+/**
+ * The marker to keep after a request that produced no notes. `claimed` is the
+ * pending marker written before the request; `previous` is what it replaced.
+ */
+export function attemptAfterFailure(
+  claimed: InsightAttempt,
+  previous: InsightAttempt | undefined,
+  res: { status: number; error: string },
+): InsightAttempt | undefined {
+  // Refused before any work (signed out, no credits): does not count as a try.
+  if (res.status === 401 || res.status === 402) return previous;
+  if (res.error === 'bad_output') return { ...claimed, state: 'failed' };
+  return { ...claimed, state: 'retry' };
 }
 
 export interface InsightRequestBody {

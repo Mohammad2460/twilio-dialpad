@@ -9,7 +9,7 @@ import {
   costFromOpenAiUsage,
   usdToCredits,
   reserve,
-  settle,
+  settleWithRetry,
   refund,
   CapExceededError,
   InsufficientCreditsError,
@@ -24,7 +24,10 @@ import {
 import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+// Headroom over VENDOR_TIMEOUT_MS: the vendor call must fail (and release the
+// hold) before the platform can stop the function between reserve and settle.
+export const maxDuration = 300;
+const VENDOR_TIMEOUT_MS = 120_000;
 
 export function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
@@ -116,7 +119,7 @@ export async function POST(req: NextRequest) {
   let content: string;
   let usage: OpenAiUsage;
   try {
-    const completion = await new OpenAI({ apiKey }).chat.completions.create({
+    const completion = await new OpenAI({ apiKey, timeout: VENDOR_TIMEOUT_MS, maxRetries: 1 }).chat.completions.create({
       model,
       // gpt-5 family: max_completion_tokens (not max_tokens), no temperature/top_p.
       max_completion_tokens: maxOut,
@@ -143,14 +146,23 @@ export async function POST(req: NextRequest) {
   // cost — bill the conservative reserved estimate rather than letting cost
   // collapse to min_charge (same rule as the chat route).
   let credits: number;
-  let balance: number;
+  let vendorUsd: number | null;
   if (typeof usage.prompt_tokens !== 'number' || usage.prompt_tokens <= 0) {
     credits = estCredits;
-    balance = await settle(requestId, estCredits, null, model);
+    vendorUsd = null;
   } else {
-    const vendorUsd = costFromOpenAiUsage(usage, model, pricing);
+    vendorUsd = costFromOpenAiUsage(usage, model, pricing);
     credits = usdToCredits(vendorUsd, pricing);
-    balance = await settle(requestId, credits, vendorUsd, model);
+  }
+
+  // The model has run, so the work is delivered either way. If the ledger stays
+  // unreachable the charge is lost, but failing the request would only make the
+  // client ask again and run the model a second time.
+  let balance: number | undefined;
+  try {
+    balance = await settleWithRetry(requestId, credits, vendorUsd, model);
+  } catch (e) {
+    console.error('[ai/summarize] settle failed', requestId, e instanceof Error ? e.message : e);
   }
 
   const insight = parseInsight(content);
