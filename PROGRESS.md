@@ -21,7 +21,8 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 **Live test (2026-10-04, production, `gpt-5-mini`)**
 - The OpenAI key in Vercel was invalid (every AI call failed and was refunded); the owner replaced it. Both routes now log why a vendor call failed (`vendor call failed` in the Vercel logs — status, code, short message only).
 - `POST /api/ai/summarize` on a short call: correct summary, objections, promises with the right owner, relative dates resolved to real dates. **1 credit.**
-- `POST /api/ai/chat` `mode: 'calls'` with one small call as context: grounded answer citing `[C1]`. **1 credit.** A full-size digest (~40k tokens) costs more — estimated 3–4 credits, **not measured yet**.
+- `POST /api/ai/chat` `mode: 'calls'` with one small call as context: grounded answer citing `[C1]`. **1 credit.** With a full-size digest (40 calls, ~38k tokens): correct cross-call answer with citations, **3 credits**.
+- After the summary prompt was tightened: 14-word summary (was 62), and a stated requirement ("needs SSO before rollout") is listed as an objection. Still 1 credit.
 - Ledger debits matched; failed runs were refunded in full.
 - The owner loaded the 1.4.0 build unpacked with seeded calls and checked the opt-in notice, AI tab, call detail, pre-call brief and Settings toggle.
 
