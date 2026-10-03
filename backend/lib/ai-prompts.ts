@@ -242,3 +242,24 @@ export function sanitizeTurns(messages: unknown): ChatTurn[] {
   while (recent.length > 0 && recent[0].role !== 'user') recent.shift();
   return recent;
 }
+
+/**
+ * What a failed vendor call is safe to log: HTTP status, error code/type and a
+ * short message. Never the request — no prompt, transcript or key.
+ */
+export function describeVendorError(e: unknown): {
+  status?: number;
+  code?: string;
+  type?: string;
+  message: string;
+} {
+  const err = (e ?? {}) as { status?: unknown; code?: unknown; type?: unknown; name?: unknown; message?: unknown };
+  const str = (v: unknown) => (typeof v === 'string' && v ? v.slice(0, 80) : undefined);
+  const message = typeof err.message === 'string' ? err.message : String(e);
+  return {
+    ...(typeof err.status === 'number' ? { status: err.status } : {}),
+    ...(str(err.code) ? { code: str(err.code) } : {}),
+    ...(str(err.type) ?? str(err.name) ? { type: str(err.type) ?? str(err.name) } : {}),
+    message: message.replace(/\s+/g, ' ').slice(0, 300),
+  };
+}

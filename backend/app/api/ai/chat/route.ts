@@ -21,7 +21,7 @@ import {
   type AnthropicUsage,
   type OpenAiUsage,
 } from '@/lib/credits';
-import { chatDataMessage, chatSystemPrompt, sanitizeTurns, type ChatMode } from '@/lib/ai-prompts';
+import { chatDataMessage, chatSystemPrompt, sanitizeTurns, type ChatMode, describeVendorError } from '@/lib/ai-prompts';
 import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
@@ -220,7 +220,8 @@ export async function POST(req: NextRequest) {
             vendorUsd = costFromAnthropicUsage(final.usage as AnthropicUsage, model, pricing);
             credits = usdToCredits(vendorUsd, pricing);
           }
-        } catch {
+        } catch (e) {
+          console.error('[ai/chat] vendor call failed', requestId, describeVendorError(e));
           // The vendor call itself failed — no usage captured, release the hold.
           try {
             const balance = await refund(requestId, 0, null);

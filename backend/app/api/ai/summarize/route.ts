@@ -21,6 +21,7 @@ import {
   insightSystemPrompt,
   insightUserPrompt,
   parseInsight,
+  describeVendorError,
 } from '@/lib/ai-prompts';
 import { reservationKey } from '@/lib/reservation-key';
 
@@ -133,7 +134,8 @@ export async function POST(req: NextRequest) {
     });
     content = completion.choices[0]?.message?.content ?? '';
     usage = (completion.usage ?? {}) as OpenAiUsage;
-  } catch {
+  } catch (e) {
+    console.error('[ai/summarize] vendor call failed', requestId, describeVendorError(e));
     // Vendor call failed before producing usage — nothing incurred, release the hold.
     try {
       const balance = await refund(requestId, 0, null);
@@ -147,6 +149,7 @@ export async function POST(req: NextRequest) {
   // cost to bill, so nothing is charged and nothing is delivered: release the
   // hold and report a failed generation.
   if (typeof usage.prompt_tokens !== 'number' || usage.prompt_tokens <= 0) {
+    console.error('[ai/summarize] vendor returned no usage', requestId);
     try {
       const balance = await refund(requestId, 0, null);
       return j({ error: 'generation_failed', balance }, 502);
