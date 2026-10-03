@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AI_CHAT_ENABLED } from '@shared/flags';
 
 const SEEN_KEY = 'trialPopupSeen';
 
@@ -26,6 +27,7 @@ export function TrialStartPopup() {
         <h2 className="mt-0.5 text-lg font-semibold text-gray-900">Everything in Pro, free for 7 days</h2>
         <ul className="mt-3 space-y-1.5 text-sm text-gray-600">
           <li>✓ Live call transcription — no setup</li>
+          {AI_CHAT_ENABLED && <li>✓ AI assistant — call summaries, promises, answers</li>}
           <li>✓ Claude connector — ask Claude about your calls</li>
           <li>✓ Auto-dialer — import a list, call through it</li>
           <li>✓ SMS, call recording &amp; cloud history</li>

@@ -9,7 +9,7 @@
  * Why no `idb` package?
  *   Raw IndexedDB API works fine for our small surface. Avoids extra dependency.
  */
-import type { Transcript, TranscriptSegment, ContactInfo, CallDirection } from './types';
+import type { Transcript, TranscriptMeta, TranscriptSegment, ContactInfo, CallDirection } from './types';
 
 const DB_NAME = 'twilio-dialer';
 const DB_VERSION = 1;
@@ -51,13 +51,29 @@ function reqAsPromise<T>(req: IDBRequest<T>): Promise<T> {
 
 // ── Transcript CRUD ──────────────────────────────────────────────
 
+/**
+ * Call meta (everything but segment bodies) for the newest transcripts, kept in
+ * memory after the first listMeta() and maintained by put/update/delete — so
+ * views that only need meta do not re-read every transcript body each time.
+ * Per document: a write from another window shows up on the next panel open.
+ */
+const META_CACHE_SIZE = 200;
+let _metaCache: Map<string, TranscriptMeta> | null = null;
+
+function toMeta({ segments: _segments, ...meta }: Transcript): TranscriptMeta {
+  return meta;
+}
+
 export const transcripts = {
   async put(t: Transcript): Promise<void> {
     const db = await openDb();
     const t1 = tx(db, 'readwrite', TRANSCRIPTS_STORE);
     t1.objectStore(TRANSCRIPTS_STORE).put(t);
     return new Promise((resolve, reject) => {
-      t1.oncomplete = () => resolve();
+      t1.oncomplete = () => {
+        _metaCache?.set(t.callSid, toMeta(t));
+        resolve();
+      };
       t1.onerror = () => reject(t1.error);
       t1.onabort = () => reject(t1.error);
     });
@@ -89,6 +105,41 @@ export const transcripts = {
     });
   },
 
+  /** Like list(), minus segment bodies — for views that only need call meta + insight. */
+  async listMeta(limit = META_CACHE_SIZE): Promise<TranscriptMeta[]> {
+    if (!_metaCache) {
+      const all = await this.list(META_CACHE_SIZE);
+      _metaCache = new Map(all.map((t) => [t.callSid, toMeta(t)]));
+    }
+    return [..._metaCache.values()].sort((a, b) => b.startedAt - a.startedAt).slice(0, limit);
+  },
+
+  /**
+   * Read-modify-write one transcript inside a single transaction, so a late
+   * insight write can never clobber (or be clobbered by) another update.
+   * Returns the stored record, or null when the transcript no longer exists.
+   */
+  async update(callSid: string, patch: (t: Transcript) => Transcript): Promise<Transcript | null> {
+    const db = await openDb();
+    const t1 = tx(db, 'readwrite', TRANSCRIPTS_STORE);
+    const store = t1.objectStore(TRANSCRIPTS_STORE);
+    return new Promise((resolve, reject) => {
+      let result: Transcript | null = null;
+      const getReq = store.get(callSid) as IDBRequest<Transcript | undefined>;
+      getReq.onsuccess = () => {
+        if (!getReq.result) return;
+        result = patch(getReq.result);
+        store.put(result);
+      };
+      t1.oncomplete = () => {
+        if (result) _metaCache?.set(callSid, toMeta(result));
+        resolve(result);
+      };
+      t1.onerror = () => reject(t1.error);
+      t1.onabort = () => reject(t1.error);
+    });
+  },
+
   /** Naive case-insensitive substring search across all transcripts. */
   async search(query: string, limit = 50): Promise<Transcript[]> {
     const q = query.toLowerCase().trim();
@@ -107,7 +158,10 @@ export const transcripts = {
     const t1 = tx(db, 'readwrite', TRANSCRIPTS_STORE);
     t1.objectStore(TRANSCRIPTS_STORE).delete(callSid);
     return new Promise((resolve, reject) => {
-      t1.oncomplete = () => resolve();
+      t1.oncomplete = () => {
+        _metaCache?.delete(callSid);
+        resolve();
+      };
       t1.onerror = () => reject(t1.error);
     });
   },

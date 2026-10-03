@@ -5,6 +5,9 @@ import { usePasteSuggestion } from '../hooks/use-paste-suggestion';
 import { normalizeE164, formatForDisplay } from '@shared/phone';
 import { storage } from '@shared/storage';
 import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
+import { useCallData } from '../hooks/use-call-data';
+import { PreCallBrief } from './PreCallBrief';
+import { CallHistoryDetail } from './CallHistoryDetail';
 
 const KEYS: { d: string; sub?: string }[] = [
   { d: '1' }, { d: '2', sub: 'ABC' }, { d: '3', sub: 'DEF' },
@@ -23,6 +26,8 @@ export function Dialpad() {
   const setCallerIdsStore = useCallStore((s) => s.setCallerIds);
   const setView = useCallStore((s) => s.setView);
   const ready = deviceState === 'registered';
+  const { calls } = useCallData();
+  const [detailFor, setDetailFor] = useState<string | null>(null);
 
   // Paste-to-dial — only show chip when input is empty.
   const { suggestion, dismiss: dismissSuggestion } = usePasteSuggestion(input.length > 0);
@@ -376,6 +381,11 @@ export function Dialpad() {
         </div>
       </div>
 
+      {/* ── Pre-call brief — what happened last time with this number ── */}
+      {AI_CHAT_ENABLED && norm.ok && (
+        <PreCallBrief number={norm.e164!} calls={calls} onOpenCall={setDetailFor} />
+      )}
+
       {/* ── Keypad ── */}
       <div className="mt-2 grid grid-cols-3 gap-3">
         {KEYS.map((k) => (
@@ -436,6 +446,8 @@ export function Dialpad() {
           Ask Claude about your calls
         </button>
       ) : null}
+
+      {detailFor && <CallHistoryDetail callSid={detailFor} onClose={() => setDetailFor(null)} />}
     </div>
   );
 }

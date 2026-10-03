@@ -6,7 +6,7 @@ import { maskSid } from '@shared/twilio-rest';
 import { pushConfig } from '@shared/twilio-env';
 import { ensureCloudAccount } from '@shared/cloud';
 import { listRecordings, deleteRecording, type Recording } from '@shared/recordings';
-import { BYO_DEEPGRAM_ENABLED } from '@shared/flags';
+import { AI_CHAT_ENABLED, BYO_DEEPGRAM_ENABLED } from '@shared/flags';
 import { enableBubble, disableBubble } from '@shared/bubble-perms';
 import { PaywallGate } from './PaywallGate';
 
@@ -241,6 +241,14 @@ function AISection({
             onChange={(v) => onUpdate({ managedTranscription: v })}
           />
         </PaywallGate>
+        {AI_CHAT_ENABLED && (
+          <Toggle
+            label="Automatic call summaries"
+            description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Counts toward your AI allowance."
+            checked={settings.aiAutoSummary !== false}
+            onChange={(v) => onUpdate({ aiAutoSummary: v })}
+          />
+        )}
         {mcpUrl && (
           <PaywallGate feature="ai_analysis">
           <div className="border-t border-gray-100 pt-3">
@@ -279,6 +287,15 @@ function AISection({
           onChange={(v) => onUpdate({ managedTranscription: v })}
         />
       </PaywallGate>
+
+      {AI_CHAT_ENABLED && (
+        <Toggle
+          label="Automatic call summaries"
+          description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Counts toward your AI allowance."
+          checked={settings.aiAutoSummary !== false}
+          onChange={(v) => onUpdate({ aiAutoSummary: v })}
+        />
+      )}
 
       <div className={managedOn ? 'opacity-50' : ''}>
         <label className="block text-xs font-medium text-gray-700">

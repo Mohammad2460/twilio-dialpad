@@ -11,6 +11,8 @@ import { transcripts, buildTranscript, prefs } from '@shared/transcripts';
 import { ensureCloudAccount, syncCallToCloud } from '@shared/cloud';
 import { track } from '@shared/telemetry';
 import { useDialerStore } from '../stores/dialer-store';
+import { AI_CHAT_ENABLED } from '@shared/flags';
+import { autoBackfill, autoSummaryAllowed, summarizeCall } from '@shared/insights';
 import type { CallRecord, Transcript } from '@shared/types';
 
 // Module-level singleton — persists across React re-renders and side-panel re-mounts.
@@ -81,6 +83,7 @@ export function useDevice() {
           sid?: string;
           durationSec?: number;
           error?: string;
+          declined?: boolean;
         };
         if (!cs.state || cs.state === 'closed') {
           // Snapshot the active call BEFORE clearing so we can build CallRecord.
@@ -168,6 +171,10 @@ export function useDevice() {
     // Load call history.
     storage.getHistory().then(setHistory);
 
+    // Summarise recent transcribed calls that never got AI notes (e.g. the panel
+    // was closed right after the call). Best-effort, capped, never blocks.
+    if (AI_CHAT_ENABLED) void autoBackfill();
+
     // Hydrate dialer store (queue + dnc + daily count) — fire-and-forget.
     useDialerStore.getState().hydrate().catch((e) => console.warn('[dialer] hydrate failed', e));
 
@@ -212,7 +219,7 @@ export function useDevice() {
  */
 async function persistEndedCall(
   active: { direction: 'in' | 'out'; remoteNumber: string; startedAt: number; contact?: import('@shared/types').ContactInfo },
-  cs: { sid?: string; durationSec?: number; error?: string },
+  cs: { sid?: string; durationSec?: number; error?: string; declined?: boolean },
 ): Promise<void> {
   if (!cs.sid) return;
 
@@ -234,6 +241,7 @@ async function persistEndedCall(
     startedAt: Date.now() - durationSec * 1000,
     durationSec,
     status: cs.error ? 'failed' : durationSec > 0 ? 'completed' : 'missed',
+    ...(cs.declined ? { declined: true } : {}),
     hasTranscript: !!transcript,
     contact: active.contact,
   };
@@ -260,6 +268,16 @@ async function persistEndedCall(
     }
   } catch (e) {
     console.warn('[dialer] mark-done failed', e);
+  }
+
+  // AI notes for this call (summary, promises) — fire-and-forget, never blocks call flow
+  if (AI_CHAT_ENABLED && transcript) {
+    const sid = cs.sid;
+    storage
+      .getSettings()
+      .then((s) => autoSummaryAllowed(s))
+      .then((allowed) => (allowed ? summarizeCall(sid) : undefined))
+      .catch(() => {});
   }
 
   // 3. Cloud sync — fire-and-forget, never blocks call flow

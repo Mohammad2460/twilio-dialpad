@@ -1,43 +1,42 @@
 import { useEffect, useRef, useState } from 'react';
-import { ensureCloudAccount, getSubscription, getCheckoutUrl } from '@shared/cloud';
-import {
-  streamChat,
-  getCreditBalance,
-  getCachedCreditState,
-  startTopUp,
-  TOPUP_PACKS,
-  type ChatTurn,
-} from '@shared/credits';
-import { UpgradeModal } from './UpgradeModal';
+import { ensureCloudAccount } from '@shared/cloud';
+import { streamChat, startTopUp, AI_MODEL, TOPUP_PACKS, type ChatTurn } from '@shared/credits';
+import { splitCitations, type CallDigest, type CallRef } from '@shared/ai-context';
+import { formatForDisplay } from '@shared/phone';
+import { useCallStore } from '../stores/call-store';
 
-/** Models offered in the picker. GPT-5 mini is the only free model (default);
- *  all Claude models require Pro. */
-const MODELS: { id: string; label: string; pro: boolean }[] = [
-  { id: 'gpt-5-mini', label: 'GPT-5 mini', pro: false },
-  { id: 'claude-haiku-4-5', label: 'Claude Haiku', pro: true },
-  { id: 'claude-sonnet-4-6', label: 'Claude Sonnet', pro: true },
-  { id: 'claude-opus-4-8', label: 'Claude Opus', pro: true },
-];
+interface Props {
+  /** Single-call mode: the transcript of the call being discussed. */
+  transcript?: string;
+  /**
+   * Multi-call mode: builds the call digest. Called once per thread, on the
+   * first question, so `[C#]` references stay stable for the whole conversation.
+   */
+  loadContext?: () => Promise<CallDigest>;
+  /** One-tap starter questions, shown while the thread is empty. */
+  suggestions?: string[];
+  /** Open a cited call. Citations render as plain text without it. */
+  onOpenCall?: (callSid: string) => void;
+}
+
+type Notice = { kind: 'credits' | 'error'; msg: string };
 
 /**
- * Managed multi-provider AI chatbox. Works standalone (general chat) or over a
- * single call's transcript. Streams answers, meters credits server-side, surfaces
- * balance + upsell. `transcript` optional; when absent the backend uses a general
- * assistant prompt.
+ * Managed AI chatbox. Answers over one call's transcript, over the user's whole
+ * call digest, or as open chat when given neither. Streams answers; the backend
+ * meters credits and is the only thing that can refuse spend (402).
  */
-export function AiChatbox({ transcript }: { transcript?: string }) {
+export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
-  const [hasPro, setHasPro] = useState(false);
-  const [model, setModel] = useState(MODELS[0].id);
-  const [balance, setBalance] = useState<number | null>(null);
   const [turns, setTurns] = useState<ChatTurn[]>([]);
   const [draft, setDraft] = useState('');
   const [streaming, setStreaming] = useState(false);
-  const [notice, setNotice] = useState<{ kind: 'pro' | 'credits' | 'error'; msg: string } | null>(null);
-  const [upgradeOpen, setUpgradeOpen] = useState(false);
-  const [checkoutErr, setCheckoutErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [refs, setRefs] = useState<Record<string, CallRef>>({});
+  const setView = useCallStore((s) => s.setView);
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const digestRef = useRef<CallDigest | null>(null);
 
   // Abort any in-flight stream on unmount (tab switch / context change) so we stop
   // streaming + billing instead of leaking the request.
@@ -45,21 +44,13 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      const cached = await getCachedCreditState();
-      if (!cancelled && cached) setBalance(cached.balance);
-      try {
-        const acct = await ensureCloudAccount();
-        if (cancelled) return;
-        setUserId(acct.userId);
-        const state = await getCreditBalance(acct.userId);
-        if (!cancelled) setBalance(state.balance);
-        const sub = await getSubscription(acct.userId);
-        if (!cancelled) setHasPro(!!sub?.hasAccess);
-      } catch {
+    ensureCloudAccount()
+      .then((acct) => {
+        if (!cancelled) setUserId(acct.userId);
+      })
+      .catch(() => {
         /* not registered — chatbox stays disabled */
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };
@@ -69,45 +60,39 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [turns, streaming]);
 
-  function selectModel(id: string) {
-    const m = MODELS.find((x) => x.id === id);
-    if (m?.pro && !hasPro) {
-      setUpgradeOpen(true);
-      return;
-    }
-    setModel(id);
+  function reset() {
+    abortRef.current?.abort();
+    digestRef.current = null;
+    setTurns([]);
+    setRefs({});
+    setNotice(null);
   }
 
-  async function handleUpgrade() {
-    if (!userId) return;
-    setCheckoutErr(null);
-    try {
-      const url = await getCheckoutUrl(userId);
-      await chrome.tabs.create({ url, active: true });
-    } catch (e) {
-      setCheckoutErr(e instanceof Error ? e.message : 'Could not start checkout');
-    }
-  }
-
-  async function ask() {
-    const q = draft.trim();
+  async function ask(question?: string) {
+    const q = (question ?? draft).trim();
     if (!q || !userId || streaming) return;
     setNotice(null);
     setDraft('');
     const next: ChatTurn[] = [...turns, { role: 'user', content: q }];
-    setTurns(next);
+    // Optimistic empty assistant turn we append deltas to.
+    setTurns([...next, { role: 'assistant', content: '' }]);
     setStreaming(true);
 
-    // Optimistic empty assistant turn we append deltas to.
-    setTurns((t) => [...t, { role: 'assistant', content: '' }]);
+    const dropEmptyAnswer = () => setTurns((t) => (t[t.length - 1]?.content ? t : t.slice(0, -1)));
     const ctrl = new AbortController();
     abortRef.current = ctrl;
     let acc = '';
     try {
+      if (loadContext && !digestRef.current) {
+        digestRef.current = await loadContext();
+        setRefs(digestRef.current.refs);
+      }
+      const context = digestRef.current?.text;
       for await (const ev of streamChat(userId, {
-        model,
+        model: AI_MODEL,
         transcript,
-        mode: transcript ? 'call' : 'general',
+        context,
+        mode: context ? 'calls' : transcript ? 'call' : 'general',
         messages: next,
         idempotencyKey: crypto.randomUUID(),
         signal: ctrl.signal,
@@ -119,26 +104,22 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
             copy[copy.length - 1] = { role: 'assistant', content: acc };
             return copy;
           });
-        } else if (ev.type === 'done') {
-          setBalance(ev.balance);
         } else if (ev.type === 'error') {
-          if (ev.status === 402 && ev.error === 'pro_required') {
-            setNotice({ kind: 'pro', msg: 'Claude models need Pro. GPT-5 mini is free.' });
-            setUpgradeOpen(true);
-          } else if (ev.status === 402 || ev.error === 'insufficient_credits') {
-            setNotice({ kind: 'credits', msg: 'Out of credits — upgrade or top up to keep using AI.' });
+          if (ev.status === 402 || ev.error === 'insufficient_credits') {
+            setNotice({ kind: 'credits', msg: 'You’ve used up your AI allowance. Top up or go Pro to keep asking.' });
+          } else if (ev.status === 413) {
+            setNotice({ kind: 'error', msg: 'That conversation got too long. Start a new chat and ask again.' });
           } else {
             setNotice({ kind: 'error', msg: 'AI request failed. Try again.' });
           }
-          if (typeof ev.balance === 'number') setBalance(ev.balance);
-          setTurns((t) => (t[t.length - 1]?.content ? t : t.slice(0, -1)));
+          dropEmptyAnswer();
         }
       }
     } catch (e) {
       // Aborted on unmount/context-switch — benign. Surface anything else.
       if ((e as { name?: string })?.name !== 'AbortError') {
         setNotice({ kind: 'error', msg: 'AI request failed. Try again.' });
-        setTurns((t) => (t[t.length - 1]?.content ? t : t.slice(0, -1)));
+        dropEmptyAnswer();
       }
     } finally {
       setStreaming(false);
@@ -149,118 +130,157 @@ export function AiChatbox({ transcript }: { transcript?: string }) {
   const placeholder = !userId
     ? 'Set up your account first'
     : transcript
-      ? 'Ask AI about this call…'
-      : 'Ask AI anything about your sales calls…';
+      ? 'Ask about this call…'
+      : 'Ask about your calls…';
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-gray-200">
-        <div className="flex flex-wrap items-center gap-1">
-          {MODELS.map((m) => {
-            const locked = m.pro && !hasPro;
-            const active = m.id === model;
-            return (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => selectModel(m.id)}
-                disabled={streaming}
-                className={[
-                  'inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium transition disabled:opacity-50',
-                  active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
-                ].join(' ')}
-                title={locked ? 'Pro — tap to upgrade' : m.label}
-              >
-                {m.label}
-                {m.pro && (
-                  <span
-                    className={[
-                      'rounded px-1 text-[9px] font-bold uppercase tracking-wide',
-                      active ? 'bg-white/25 text-white' : 'bg-amber-200 text-amber-800',
-                    ].join(' ')}
-                  >
-                    Pro
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-        <span className="shrink-0 text-xs text-gray-500" title="Managed-AI credits">
-          {balance === null ? '—' : `${balance} cr`}
-        </span>
-      </div>
-
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-2 space-y-2">
+    <div className="flex h-full flex-col">
+      <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto px-3 py-2">
         {turns.length === 0 && (
-          <p className="text-xs text-gray-400 mt-4 text-center">
-            {transcript
-              ? 'Ask about this call — “Why didn’t they commit?”, “What objections came up?”'
-              : 'Ask anything — “Draft a follow-up email”, “How do I handle a price objection?”'}
-          </p>
+          <div className="mt-2 space-y-1.5">
+            {(suggestions ?? []).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => ask(s)}
+                disabled={!userId || streaming}
+                className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs text-gray-700 transition hover:border-brand-200 hover:bg-brand-50 disabled:opacity-50"
+              >
+                {s}
+              </button>
+            ))}
+            {!suggestions?.length && (
+              <p className="mt-4 text-center text-xs text-gray-400">
+                {transcript
+                  ? 'Ask about this call — “Why didn’t they commit?”, “What should I say next time?”'
+                  : 'Ask anything about selling on the phone.'}
+              </p>
+            )}
+          </div>
         )}
         {turns.map((t, i) => (
           <div
             key={i}
-            className={`text-sm rounded-lg px-3 py-2 max-w-[90%] whitespace-pre-wrap ${
-              t.role === 'user' ? 'bg-blue-600 text-white ml-auto' : 'bg-gray-100 text-gray-900'
+            className={`max-w-[90%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
+              t.role === 'user' ? 'ml-auto bg-brand-600 text-white' : 'bg-gray-100 text-gray-900'
             }`}
           >
-            {t.content || (streaming ? '…' : '')}
+            {t.role === 'assistant' ? (
+              t.content ? (
+                <Answer text={t.content} refs={refs} onOpenCall={onOpenCall} />
+              ) : streaming ? (
+                <span className="text-gray-400">Thinking…</span>
+              ) : (
+                ''
+              )
+            ) : (
+              t.content
+            )}
           </div>
         ))}
       </div>
 
       {notice && (
         <div
-          className={`mx-3 mb-2 text-xs rounded px-3 py-2 ${
+          className={`mx-3 mb-2 rounded px-3 py-2 text-xs ${
             notice.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'
           }`}
         >
           <p>{notice.msg}</p>
           {notice.kind === 'credits' && userId && (
-            <button
-              onClick={() => startTopUp(userId, TOPUP_PACKS[0])}
-              className="mt-1 font-medium text-blue-700 hover:underline"
-            >
-              Top up {TOPUP_PACKS[0]} credits (${TOPUP_PACKS[0] / 100})
-            </button>
-          )}
-          {notice.kind === 'pro' && (
-            <button
-              onClick={() => setUpgradeOpen(true)}
-              className="mt-1 font-medium text-blue-700 hover:underline"
-            >
-              See Pro benefits
-            </button>
+            <div className="mt-1 flex gap-3">
+              <button
+                type="button"
+                onClick={() => startTopUp(userId, TOPUP_PACKS[0])}
+                className="font-medium text-brand-700 hover:underline"
+              >
+                Top up (${TOPUP_PACKS[0] / 100})
+              </button>
+              <button
+                type="button"
+                onClick={() => setView('pro')}
+                className="font-medium text-brand-700 hover:underline"
+              >
+                See Pro
+              </button>
+            </div>
           )}
         </div>
       )}
 
-      <div className="flex gap-2 p-3 border-t border-gray-200">
+      <div className="flex gap-2 border-t border-gray-200 p-3">
+        {turns.length > 0 && (
+          <button
+            type="button"
+            onClick={reset}
+            title="Start a new chat"
+            aria-label="Start a new chat"
+            className="rounded px-2 text-sm text-gray-500 hover:bg-gray-100"
+          >
+            ↺
+          </button>
+        )}
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && ask()}
           placeholder={placeholder}
           disabled={!userId || streaming}
-          className="flex-1 text-sm border border-gray-300 rounded px-3 py-2 disabled:bg-gray-50"
+          className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
         />
         <button
-          onClick={ask}
+          type="button"
+          onClick={() => ask()}
           disabled={!userId || streaming || !draft.trim()}
-          className="text-sm px-3 py-2 rounded bg-blue-600 text-white disabled:opacity-40"
+          className="rounded bg-brand-600 px-3 py-2 text-sm text-white disabled:opacity-40"
         >
           {streaming ? '…' : 'Ask'}
         </button>
       </div>
-
-      <UpgradeModal
-        open={upgradeOpen}
-        onClose={() => setUpgradeOpen(false)}
-        onUpgrade={handleUpgrade}
-        error={checkoutErr}
-      />
     </div>
+  );
+}
+
+/** Answer text with `[C#]` citations turned into chips that open the cited call. */
+function Answer({
+  text,
+  refs,
+  onOpenCall,
+}: {
+  text: string;
+  refs: Record<string, CallRef>;
+  onOpenCall?: (callSid: string) => void;
+}) {
+  return (
+    <>
+      {splitCitations(text).map((part, i) => {
+        if (part.type === 'text') return <span key={i}>{part.text}</span>;
+        const ref = refs[part.ref];
+        // Unknown reference (still streaming, or the model made one up) — drop it.
+        if (!ref) return null;
+        const label = `${ref.contactName ?? formatForDisplay(ref.number)} · ${new Date(
+          ref.startedAt,
+        ).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+        const sid = ref.sid;
+        if (!sid || !onOpenCall) {
+          return (
+            <span key={i} className="mx-0.5 rounded bg-gray-200 px-1.5 py-0.5 text-[11px] text-gray-700">
+              {label}
+            </span>
+          );
+        }
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onOpenCall(sid)}
+            title="Open this call"
+            className="mx-0.5 rounded bg-brand-100 px-1.5 py-0.5 text-[11px] font-medium text-brand-800 hover:bg-brand-200"
+          >
+            {label}
+          </button>
+        );
+      })}
+    </>
   );
 }

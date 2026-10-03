@@ -5,8 +5,11 @@
  * to restore the feature exactly as it was.
  */
 
-/** In-extension AI chat (AiTab, AiChatbox, AI upsell bullets). Hidden for now. */
-export const AI_CHAT_ENABLED = false;
+/**
+ * In-extension AI assistant: AI tab (Today, promises, chat over calls), automatic
+ * call summaries, pre-call brief. Off = the Claude connector tab takes its place.
+ */
+export const AI_CHAT_ENABLED = true;
 
 /**
  * Bring-your-own Deepgram key. When false, the key/model inputs are hidden and

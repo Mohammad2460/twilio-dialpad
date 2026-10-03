@@ -389,7 +389,12 @@ export class DeviceManager {
         this.settings?.managedTranscription ||
         (!BYO_DEEPGRAM_ENABLED && !!this.settings?.deepgramApiKey);
       const callSid = call.parameters.CallSid ?? '';
-      const remoteNumber = (call.parameters.From ?? call.parameters.To ?? '') as string;
+      // Outgoing calls carry the dialed number in the connect params, not in
+      // `parameters` (which may hold only the CallSid).
+      const remoteNumber = (call.parameters.From ??
+        call.parameters.To ??
+        call.customParameters?.get('To') ??
+        '') as string;
       if (callSid && (managedOn || apiKey)) {
         this.transcription = new TranscriptionController();
         void (async () => {
@@ -443,7 +448,8 @@ export class DeviceManager {
     });
     call.on('reject', async () => {
       await finalizeTranscription();
-      emitCallState({ state: 'closed', direction, durationSec: 0, sid: call.parameters.CallSid });
+      // 'reject' fires only when the local user declined the call.
+      emitCallState({ state: 'closed', direction, durationSec: 0, sid: call.parameters.CallSid, declined: true });
       storeSet({ callState: null });
       this.call = null;
     });

@@ -315,7 +315,7 @@ function TierComparison() {
           <p className="mt-0.5 text-[11px] text-gray-500">$0</p>
           <ul className="mt-2 space-y-1 text-[11px] text-gray-600">
             <li>✓ Calling (your Twilio)</li>
-            {AI_CHAT_ENABLED && <li>✓ GPT-5 mini AI</li>}
+            {AI_CHAT_ENABLED && <li>✓ AI assistant (starter allowance)</li>}
             {BYO_DEEPGRAM_ENABLED ? (
               <li>✓ Bring-your-own Deepgram</li>
             ) : (
@@ -327,9 +327,9 @@ function TierComparison() {
           <p className="text-sm font-semibold text-brand-900">Pro</p>
           <p className="mt-0.5 text-[11px] text-brand-700">$9/mo · 7-day trial</p>
           <ul className="mt-2 space-y-1 text-[11px] text-brand-800">
-            {AI_CHAT_ENABLED && <li>✓ All Claude models (Haiku/Sonnet/Opus)</li>}
+            {AI_CHAT_ENABLED && <li>✓ AI call summaries + answers about your calls</li>}
             <li>✓ Claude MCP — ask Claude about your calls</li>
-            <li>✓ Call transcription (1000 credits / month)</li>
+            <li>✓ {AI_CHAT_ENABLED ? 'Transcription + AI' : 'Call transcription'} (1000 credits / month)</li>
             <li>✓ SMS · recording · cloud sync</li>
           </ul>
         </div>

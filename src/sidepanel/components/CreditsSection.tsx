@@ -61,7 +61,7 @@ export function CreditsSection() {
       </div>
       <p className="text-[11px] text-gray-500">
         {AI_CHAT_ENABLED
-          ? 'Power the in-call AI chatbox. 1 credit = $0.01. Haiku is cheapest; Sonnet & Opus cost more.'
+          ? 'Power AI summaries, AI answers and live transcription. 1 credit = $0.01, metered by real usage.'
           : 'Power live call transcription. 1 credit = $0.01, metered by real usage.'}
       </p>
       <div className="grid grid-cols-3 gap-2">

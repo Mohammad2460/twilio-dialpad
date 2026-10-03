@@ -27,6 +27,7 @@ const SettingsSchema = z.object({
   /** Managed transcription (P8.3): use our Deepgram key, metered by credits,
    * instead of BYO. Opt-in; default off (BYO stays the default). */
   managedTranscription: z.boolean().optional(),
+  aiAutoSummary: z.boolean().optional(),
   transcriptFolderConfigured: z.boolean().optional(),
   incomingEnabled: z.boolean().optional(),
   forwardEnabled: z.boolean().optional(),
@@ -54,6 +55,7 @@ const CallRecordSchema = z.object({
   startedAt: z.number(),
   durationSec: z.number(),
   status: z.enum(['completed', 'missed', 'failed']),
+  declined: z.boolean().optional(),
   hasTranscript: z.boolean().optional(),
   contact: z.object({
     id: z.string(),

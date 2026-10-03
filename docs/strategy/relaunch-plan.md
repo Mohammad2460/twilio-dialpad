@@ -19,8 +19,8 @@ _Agreed with the owner on 2026-09-28/29. This is the working plan; build it one 
 | **2.0.0** | Everything below complete | full relaunch |
 
 ## Build order
-1. **AI assistant in the extension (v1)** ← START HERE
-2. **Pricing: Free vs Pro limits in the extension + demo tour**
+1. **AI assistant in the extension (v1)** — built (1.4.0, pending store upload + live test)
+2. **Pricing: Free vs Pro limits in the extension + demo tour** ← NEXT
 3. **Activation fixes** (Twilio setup guide, trust copy, email-first)
 4. **Retention loops**
 5. **Store listing + landing page**, then the 2.0 launch
@@ -31,6 +31,7 @@ _Agreed with the owner on 2026-09-28/29. This is the working plan; build it one 
 Already ~70% built but hidden: `AI_CHAT_ENABLED = false` in `src/shared/flags.ts`; backend `POST /api/ai/chat` exists with credit metering (reserve → settle from real vendor usage → refund).
 
 - **Why:** the Claude MCP connector needs a paid Claude plan + connector setup — most sales reps never do it. Built-in chat works for everyone from minute one and is the reason to pay. Keep the MCP connector too (zero cost to us).
+- **v1 as built (1.4.0):** every transcribed call is summarised automatically into notes (summary, objections, promises, next step). Those notes drive a **pre-call brief** (keypad + incoming call), a **Today** list and an **open-promises** checklist — all computed on the device, no AI call. Chat answers questions across calls and links to the calls it used. Design: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - **v1 — Ask (read-only):** Q&A over the user's calls ("what did Acme object to?", "who should I call back today?"), auto-loaded recent transcripts (newest first, ~40k-token budget under the 60k cap), post-call summary + next steps.
 - **v2 — Prepare (human confirms every action):** draft follow-up email/SMS, build an auto-dialer list from calls, write notes/reminders — always a Confirm button.
 - **v3 — Act autonomously:** probably never; only if users ask. Risk: wrong calls, consent/legal.

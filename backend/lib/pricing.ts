@@ -100,6 +100,18 @@ export function costFromDeepgramMinutes(minutes: number, model: string, p: Prici
 }
 
 // ── Estimates for the reservation hold (upper bound; settle is exact) ─────────
+/**
+ * Input-token estimate for caps and holds. ASCII text runs ~4 characters per
+ * token; other scripts (Arabic, CJK, Cyrillic, Devanagari…) run about one token
+ * per character, so they are counted in full. The extension's digest budget
+ * uses the same rule (src/shared/ai-context.ts).
+ */
+export function estimateTokens(text: string): number {
+  let nonAscii = 0;
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) > 0x7f) nonAscii++;
+  return Math.ceil((text.length - nonAscii) / 4 + nonAscii);
+}
+
 /** Worst-case LLM credits: full input estimate + capped output at this model. */
 export function estimateLlmCredits(
   estInputTokens: number,

@@ -2,14 +2,18 @@ import { useCallStore } from '../stores/call-store';
 import { getManager } from '../hooks/use-device';
 import { formatForDisplay } from '@shared/phone';
 import { formatRelativeDate } from '@shared/hubspot';
+import { AI_CHAT_ENABLED } from '@shared/flags';
+import { useCallData } from '../hooks/use-call-data';
+import { PreCallBrief } from './PreCallBrief';
 
 export function IncomingCall() {
   const call = useCallStore((s) => s.activeCall)!;
   const contact = call.contact;
+  const { calls } = useCallData();
 
   return (
     <div className="flex h-full flex-col items-center justify-between p-6">
-      <div className="mt-12 flex flex-col items-center">
+      <div className="mt-12 flex w-full flex-col items-center">
         <div className="h-20 w-20 animate-pulse rounded-full bg-green-100" />
         <p className="mt-4 text-sm uppercase tracking-wide text-gray-500">Incoming call</p>
 
@@ -40,6 +44,13 @@ export function IncomingCall() {
           </>
         ) : (
           <h2 className="mt-2 text-2xl font-medium">{formatForDisplay(call.remoteNumber)}</h2>
+        )}
+
+        {/* What happened last time — read before you pick up */}
+        {AI_CHAT_ENABLED && (
+          <div className="mt-4 w-full">
+            <PreCallBrief number={call.remoteNumber} calls={calls} />
+          </div>
         )}
       </div>
       <div className="mb-6 flex w-full justify-around">

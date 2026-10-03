@@ -24,6 +24,7 @@ export {
   costFromOpenAiUsage,
   costFromDeepgramMinutes,
   estimateLlmCredits,
+  estimateTokens,
   estimateTranscriptionCredits,
   enforceLlmCaps,
   providerForModel,
@@ -101,6 +102,30 @@ export async function settle(
   });
   if (error) throw new Error(`settle failed: ${error.message}`);
   return data as number;
+}
+
+/**
+ * settle() with a short retry. The vendor call has already been paid for when
+ * this runs, so a transient ledger error must not leave the reservation pending.
+ * Throws the last error when every attempt fails.
+ */
+export async function settleWithRetry(
+  requestId: string,
+  actualCredits: number,
+  vendorCostUsd: number | null,
+  model: string | null,
+  attempts = 3,
+): Promise<number> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await settle(requestId, actualCredits, vendorCostUsd, model);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 250 * (i + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 /**

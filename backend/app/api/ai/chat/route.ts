@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse, after } from 'next/server';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { corsHeaders } from '@/lib/cors';
@@ -7,19 +7,21 @@ import { supabase } from '@/lib/supabase';
 import {
   getActivePricing,
   estimateLlmCredits,
+  estimateTokens,
   enforceLlmCaps,
   costFromAnthropicUsage,
   costFromOpenAiUsage,
   providerForModel,
   usdToCredits,
   reserve,
-  settle,
+  settleWithRetry,
   refund,
   CapExceededError,
   InsufficientCreditsError,
   type AnthropicUsage,
   type OpenAiUsage,
 } from '@/lib/credits';
+import { chatDataMessage, chatSystemPrompt, sanitizeTurns, type ChatMode } from '@/lib/ai-prompts';
 import { reservationKey } from '@/lib/reservation-key';
 
 export const runtime = 'nodejs';
@@ -46,13 +48,18 @@ interface ChatBody {
   model?: string;
   /** Plain-text transcript of the call, assembled client-side. */
   transcript?: string;
+  /** Multi-call digest ([C1]…[Cn] blocks), assembled client-side. Used by mode 'calls'. */
+  context?: string;
   /** Prior chat turns in this thread (user/assistant). */
   messages?: { role: 'user' | 'assistant'; content: string }[];
   /** Per-message key from the client — a trace prefix only (see reservationKey). */
   idempotencyKey?: string;
-  /** 'call' = coach over a transcript; 'general' = open dialer assistant. */
-  mode?: 'call' | 'general';
+  /** 'call' = coach over one transcript; 'calls' = Q&A over the call digest;
+   *  'general' = open dialer assistant. */
+  mode?: ChatMode;
 }
+
+const MODES: readonly ChatMode[] = ['call', 'general', 'calls'];
 
 /**
  * POST /api/ai/chat — managed Claude chatbox over a call transcript.
@@ -91,7 +98,8 @@ export async function POST(req: NextRequest) {
   }
 
   const transcript = typeof body.transcript === 'string' ? body.transcript : '';
-  const turns = Array.isArray(body.messages) ? body.messages : [];
+  const context = typeof body.context === 'string' ? body.context : '';
+  const turns = sanitizeTurns(body.messages);
   if (turns.length === 0) return j({ error: 'no_messages' }, 400);
 
   const provider = providerForModel(model);
@@ -99,20 +107,16 @@ export async function POST(req: NextRequest) {
     provider === 'openai' ? process.env.OPENAI_API_KEY : process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return j({ error: 'ai_unavailable' }, 503);
 
-  const mode: 'call' | 'general' = body.mode ?? (transcript ? 'call' : 'general');
-  const system =
-    mode === 'call'
-      ? 'You are a sales-call coach embedded in a dialer. Answer the user’s questions ' +
-        'about THIS call using the transcript below. Be concise, specific, and tactical. ' +
-        'If the transcript does not contain the answer, say so.\n\n' +
-        `--- CALL TRANSCRIPT ---\n${transcript}\n--- END TRANSCRIPT ---`
-      : 'You are a helpful sales assistant embedded in a Twilio dialer Chrome extension. ' +
-        'Help the user with sales calls, scripts, objection handling, follow-ups, and ' +
-        'general questions. Be concise, specific, and practical.';
+  const mode: ChatMode =
+    body.mode && MODES.includes(body.mode) ? body.mode : transcript ? 'call' : 'general';
+  const system = chatSystemPrompt(mode);
+  // Call data rides as the first user message, ahead of the conversation.
+  const data = chatDataMessage(mode, { transcript, context });
+  const messages = [...(data ? [{ role: 'user' as const, content: data }] : []), ...turns];
 
-  // Estimate input tokens for the reservation hold (chars/4 heuristic, upper-bounded).
-  const promptChars = system.length + turns.reduce((n, m) => n + m.content.length, 0);
-  const estInputTokens = Math.ceil(promptChars / 4);
+  // Estimate input tokens for the cap and the reservation hold.
+  const estInputTokens =
+    estimateTokens(system) + messages.reduce((n, m) => n + estimateTokens(m.content), 0);
   const maxOut = pricing.caps.max_output_tokens;
 
   try {
@@ -136,73 +140,109 @@ export async function POST(req: NextRequest) {
     throw e;
   }
 
+  // Generation and settlement run to completion even when the client stops
+  // reading: what is charged depends on what the vendor produced, never on
+  // whether the client stayed connected. `after` keeps the function alive for it.
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => (finish = resolve));
+  after(() => finished);
+
   // Stream the completion to the client; accumulate usage for settlement.
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const send = (event: string, data: unknown) =>
-        controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+      let clientGone = false;
+      const send = (event: string, data: unknown) => {
+        if (clientGone) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          clientGone = true;
+        }
+      };
+      const close = () => {
+        try {
+          controller.close();
+        } catch {
+          /* already closed by the client */
+        }
+      };
+
       try {
         // Vendor-specific streaming; both paths must yield a real USD cost from
         // the API's own usage object (never an estimate) for settlement.
-        let vendorUsd: number;
-        if (provider === 'openai') {
-          const oai = new OpenAI({ apiKey });
-          const completion = await oai.chat.completions.create({
-            model,
-            // gpt-5 family: MUST use max_completion_tokens (not max_tokens) and
-            // MUST NOT send temperature/top_p (only defaults accepted → else 400).
-            max_completion_tokens: maxOut,
-            stream: true,
-            stream_options: { include_usage: true },
-            messages: [
-              { role: 'system', content: system },
-              ...turns.map((m) => ({ role: m.role, content: m.content })),
-            ],
-          });
-          let usage: OpenAiUsage = {};
-          for await (const chunk of completion) {
-            const delta = chunk.choices[0]?.delta?.content;
-            if (delta) send('delta', { text: delta });
-            if (chunk.usage) usage = chunk.usage as OpenAiUsage;
+        let credits: number;
+        let vendorUsd: number | null;
+        try {
+          if (provider === 'openai') {
+            const oai = new OpenAI({ apiKey });
+            const completion = await oai.chat.completions.create({
+              model,
+              // gpt-5 family: MUST use max_completion_tokens (not max_tokens) and
+              // MUST NOT send temperature/top_p (only defaults accepted → else 400).
+              max_completion_tokens: maxOut,
+              // Reasoning tokens bill as output and delay the first token; Q&A over
+              // supplied call data does not need more than a light pass.
+              ...(model.startsWith('gpt-5') ? { reasoning_effort: 'low' as const } : {}),
+              stream: true,
+              stream_options: { include_usage: true },
+              messages: [
+                { role: 'system', content: system },
+                ...messages.map((m) => ({ role: m.role, content: m.content })),
+              ],
+            });
+            let usage: OpenAiUsage = {};
+            for await (const chunk of completion) {
+              const delta = chunk.choices[0]?.delta?.content;
+              if (delta) send('delta', { text: delta });
+              if (chunk.usage) usage = chunk.usage as OpenAiUsage;
+            }
+            // Settlement MUST come from real usage. If the stream finished without a
+            // usage chunk (proxy/gateway dropped include_usage, early finish, etc.),
+            // we have no real cost — bill the conservative reserved estimate rather
+            // than letting cost collapse to 0/min_charge (metering bypass). C1.
+            if (typeof usage.completion_tokens !== 'number' || usage.completion_tokens <= 0) {
+              vendorUsd = null;
+              credits = estCredits;
+            } else {
+              vendorUsd = costFromOpenAiUsage(usage, model, pricing);
+              credits = usdToCredits(vendorUsd, pricing);
+            }
+          } else {
+            const ant = new Anthropic({ apiKey }).messages.stream({
+              model,
+              max_tokens: maxOut,
+              system,
+              messages: messages.map((m) => ({ role: m.role, content: m.content })),
+            });
+            ant.on('text', (delta) => send('delta', { text: delta }));
+            const final = await ant.finalMessage();
+            vendorUsd = costFromAnthropicUsage(final.usage as AnthropicUsage, model, pricing);
+            credits = usdToCredits(vendorUsd, pricing);
           }
-          // Settlement MUST come from real usage. If the stream finished without a
-          // usage chunk (proxy/gateway dropped include_usage, early finish, etc.),
-          // we have no real cost — bill the conservative reserved estimate rather
-          // than letting cost collapse to 0/min_charge (metering bypass). C1.
-          if (typeof usage.completion_tokens !== 'number' || usage.completion_tokens <= 0) {
-            const balance = await settle(requestId, estCredits, null, model);
-            send('done', { credits: estCredits, balance });
-            controller.close();
-            return;
+        } catch {
+          // The vendor call itself failed — no usage captured, release the hold.
+          try {
+            const balance = await refund(requestId, 0, null);
+            send('error', { error: 'generation_failed', balance });
+          } catch {
+            send('error', { error: 'generation_failed' });
           }
-          vendorUsd = costFromOpenAiUsage(usage, model, pricing);
-        } else {
-          const ant = new Anthropic({ apiKey }).messages.stream({
-            model,
-            max_tokens: maxOut,
-            system,
-            messages: turns.map((m) => ({ role: m.role, content: m.content })),
-          });
-          ant.on('text', (delta) => send('delta', { text: delta }));
-          const final = await ant.finalMessage();
-          vendorUsd = costFromAnthropicUsage(final.usage as AnthropicUsage, model, pricing);
+          return;
         }
 
-        const actualCredits = usdToCredits(vendorUsd, pricing);
-        const balance = await settle(requestId, actualCredits, vendorUsd, model);
-        send('done', { credits: actualCredits, balance });
-        controller.close();
-      } catch (err) {
-        // Generation failed/partial — refund the hold (no vendor usage captured here,
-        // so treat as fully unincurred; a partial that still billed is rare for chat).
+        // The answer is already delivered; a ledger error here must not turn
+        // into a refund of work the vendor has billed.
         try {
-          const balance = await refund(requestId, 0, null);
-          send('error', { error: 'generation_failed', balance });
-        } catch {
-          send('error', { error: 'generation_failed' });
+          const balance = await settleWithRetry(requestId, credits, vendorUsd, model);
+          send('done', { credits, balance });
+        } catch (e) {
+          console.error('[ai/chat] settle failed', requestId, e instanceof Error ? e.message : e);
+          send('done', { credits });
         }
-        controller.close();
+      } finally {
+        close();
+        finish();
       }
     },
   });
