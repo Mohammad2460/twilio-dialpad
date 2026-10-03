@@ -108,6 +108,24 @@ describe('mergeCalls', () => {
   });
 });
 
+describe('mergeCalls — numbers', () => {
+  it('takes the number from the history record when the transcript has none', () => {
+    const calls = mergeCalls(
+      [record({ id: 'h1', sid: 'CA1', number: '+14155550100' })],
+      [transcript({ callSid: 'CA1', remoteNumber: '' })],
+    );
+    expect(calls[0].number).toBe('+14155550100');
+  });
+
+  it('keeps the transcript number when the history record has no usable one', () => {
+    const calls = mergeCalls(
+      [record({ id: 'h1', sid: 'CA1', number: 'Unknown' })],
+      [transcript({ callSid: 'CA1', remoteNumber: '+14155550100' })],
+    );
+    expect(calls[0].number).toBe('+14155550100');
+  });
+});
+
 describe('buildCallDigest', () => {
   it('starts with today and numbers calls newest first', () => {
     const calls = mergeCalls([], [

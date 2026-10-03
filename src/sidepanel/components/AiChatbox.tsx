@@ -106,7 +106,7 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
           });
         } else if (ev.type === 'error') {
           if (ev.status === 402 || ev.error === 'insufficient_credits') {
-            setNotice({ kind: 'credits', msg: 'You’re out of AI credits. Top up or go Pro to keep asking.' });
+            setNotice({ kind: 'credits', msg: 'You’ve used up your AI allowance. Top up or go Pro to keep asking.' });
           } else if (ev.status === 413) {
             setNotice({ kind: 'error', msg: 'That conversation got too long. Start a new chat and ask again.' });
           } else {

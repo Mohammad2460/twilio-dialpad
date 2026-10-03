@@ -244,7 +244,7 @@ function AISection({
         {AI_CHAT_ENABLED && (
           <Toggle
             label="Automatic call summaries"
-            description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Uses AI credits."
+            description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Counts toward your AI allowance."
             checked={settings.aiAutoSummary !== false}
             onChange={(v) => onUpdate({ aiAutoSummary: v })}
           />
@@ -291,7 +291,7 @@ function AISection({
       {AI_CHAT_ENABLED && (
         <Toggle
           label="Automatic call summaries"
-          description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Uses AI credits."
+          description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Counts toward your AI allowance."
           checked={settings.aiAutoSummary !== false}
           onChange={(v) => onUpdate({ aiAutoSummary: v })}
         />

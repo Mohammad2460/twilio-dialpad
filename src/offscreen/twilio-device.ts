@@ -389,7 +389,12 @@ export class DeviceManager {
         this.settings?.managedTranscription ||
         (!BYO_DEEPGRAM_ENABLED && !!this.settings?.deepgramApiKey);
       const callSid = call.parameters.CallSid ?? '';
-      const remoteNumber = (call.parameters.From ?? call.parameters.To ?? '') as string;
+      // Outgoing calls carry the dialed number in the connect params, not in
+      // `parameters` (which may hold only the CallSid).
+      const remoteNumber = (call.parameters.From ??
+        call.parameters.To ??
+        call.customParameters?.get('To') ??
+        '') as string;
       if (callSid && (managedOn || apiKey)) {
         this.transcription = new TranscriptionController();
         void (async () => {

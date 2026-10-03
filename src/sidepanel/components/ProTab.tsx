@@ -315,7 +315,7 @@ function TierComparison() {
           <p className="mt-0.5 text-[11px] text-gray-500">$0</p>
           <ul className="mt-2 space-y-1 text-[11px] text-gray-600">
             <li>✓ Calling (your Twilio)</li>
-            {AI_CHAT_ENABLED && <li>✓ AI assistant (starter credits)</li>}
+            {AI_CHAT_ENABLED && <li>✓ AI assistant (starter allowance)</li>}
             {BYO_DEEPGRAM_ENABLED ? (
               <li>✓ Bring-your-own Deepgram</li>
             ) : (

@@ -39,8 +39,8 @@ export function AiNotice() {
       <p className="text-xs font-semibold text-brand-900">New: AI call notes</p>
       <p className="mt-0.5 text-[11px] leading-relaxed text-gray-700">
         After each transcribed call, AI writes a summary and tracks what was promised. To do that,
-        the transcript text of new and recent calls is sent to our AI provider (OpenAI). Uses AI
-        credits. You can change this any time in Settings.
+        the transcript text of new and recent calls is sent to our AI provider (OpenAI). Counts
+        toward your AI allowance. You can change this any time in Settings.
       </p>
       <div className="mt-1.5 flex gap-3">
         <button

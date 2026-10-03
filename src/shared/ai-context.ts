@@ -147,6 +147,9 @@ export function mergeCalls(
       // The call record is authoritative for how the call went.
       existing.status = h.status;
       existing.durationSec = h.durationSec;
+      // ...and for who it was with: a transcript saved for an outgoing call can
+      // be missing the dialed number.
+      if (h.number && h.number !== 'Unknown') existing.number = h.number;
       existing.contactName = existing.contactName ?? h.contact?.name;
       continue;
     }
