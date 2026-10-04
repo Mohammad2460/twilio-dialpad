@@ -3,6 +3,7 @@ import { ensureCloudAccount } from '@shared/cloud';
 import { streamChat, AI_MODEL, type ChatTurn } from '@shared/credits';
 import { isBlocked, limitMessage, meterLevel, questionsLeft } from '@shared/plan';
 import { reloadPlan, usePlan } from '../hooks/use-plan';
+import { markOnboarding } from '@shared/onboarding';
 import { splitCitations, type CallDigest, type CallRef } from '@shared/ai-context';
 import { formatForDisplay } from '@shared/phone';
 import { useCallStore } from '../stores/call-store';
@@ -104,6 +105,8 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
         signal: ctrl.signal,
       })) {
         if (ev.type === 'delta') {
+          // Counts as "asked AI" once an answer starts arriving, not on a refused ask.
+          if (!acc) void markOnboarding('askedAi');
           acc += ev.text;
           setTurns((t) => {
             const copy = t.slice();

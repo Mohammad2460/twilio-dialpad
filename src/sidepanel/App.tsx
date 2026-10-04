@@ -18,6 +18,7 @@ import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 import { TrialStartPopup } from './components/TrialStartPopup';
 import { ReconnectBanner } from './components/ReconnectBanner';
 import { AiNotice } from './components/AiNotice';
+import { OnboardingChecklist } from './components/OnboardingChecklist';
 
 export function App() {
   useDevice();
@@ -37,6 +38,7 @@ export function App() {
     <div className="flex h-full flex-col bg-white">
       <StatusBar />
       <ReconnectBanner settings={settings} />
+      {!activeCall && <OnboardingChecklist />}
       <FolderPermissionBanner />
       <TrialStartPopup />
       {AI_CHAT_ENABLED && <AiNotice />}

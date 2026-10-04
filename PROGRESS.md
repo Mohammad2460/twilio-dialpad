@@ -9,7 +9,8 @@ _Last updated: 2026-10-04._
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
 - **AI assistant v1 merged and live-tested (2026-10-04)** — item 1 of the relaunch plan. `package.json` is at **1.4.0**. **Not uploaded to the store** — the owner is holding store uploads.
 - **Free vs Pro limits live on the backend (2026-10-04)** and **demo tour built** — item 2 of the relaunch plan is done in code. Not uploaded to the store.
-- **Next: activation fixes** (item 3: Twilio setup guide, trust copy, email-first) → … → **2.0 relaunch**.
+- **Activation fixes built (2026-10-04)** — item 3, except the email-first step (see "Activation" below). Not uploaded to the store.
+- **Next: retention loops** (item 4) → store listing + landing page → **2.0 relaunch**.
 
 ## AI assistant v1 (1.4.0)
 Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
@@ -48,13 +49,25 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - [x] DB: `scripts/migration-plan-limits-activate.sql` applied to production (2026-10-04); pricing version 2 is active.
 - [x] Dodo: "Twilio Dialpad Pro Monthly" ($19) and "Twilio Dialpad Pro Yearly" ($180) exist in the live account.
 - [ ] Owner: open the upgrade checkout once per cycle from the new build and confirm name and price on the Dodo page. No payment needed.
-- [ ] Owner decision: call forwarding and HubSpot are in the Pro list of the plan but are not gated yet (they work on Free today).
+- [x] Owner decision (2026-10-04): HubSpot is Pro-only, call forwarding stays free.
 - [ ] Top-up button is shown only to a Pro user at a limit ("Add $10 extra balance"); the top-up code is unchanged.
 
 ## Demo tour
 - Before any Twilio details are asked for, the side panel opens on a welcome screen whose main button plays a 30-second demo (`NotConfigured.tsx` → `DemoTour.tsx`): a sample call with a live transcript, the notes it produces, then questions about it with written-out sample answers. Setup is one tap away at every step.
 - Sample data only (`src/shared/demo-data.ts`): no account, no backend call, nothing stored.
 - Telemetry: `demo_started`, `demo_finished`, `demo_setup_clicked` (with the step it was clicked from) — compare against `wizard_started` to see whether the demo moves people into setup.
+
+## Activation (setup page + first week)
+- **Setup page** (`src/options/SetupForm.tsx`): a fold-out "No Twilio account yet?" guide (sign up, buy a number, where the SID and token are, what Twilio charges, the trial-account limit), notes under the form saying exactly what happens to the Auth Token and the API key, a link to the public code, and a marketing opt-in that is unticked by default and stored only when ticked.
+- **First-week checklist** (`OnboardingChecklist.tsx`, `src/shared/onboarding.ts`): one line under the status bar that opens into four steps — first call, transcription on, ask AI, load a list. Hides when done, when dismissed, or 14 days after setup.
+- Telemetry: `twilio_guide_opened`.
+
+**Not built — needs the owner**
+- [ ] **Email before credentials** ("send me the setup guide"). No email provider is configured in production, so nothing can be sent yet. Needs: a sending provider + domain, the guide email itself, and policy text for collecting an address before an account exists.
+- [ ] **60-second setup video** for the guide.
+- [ ] **Unsubscribe path.** Nothing clears `marketing_consent_at` yet. Must exist (link in every marketing email) before the first marketing email is sent.
+- [ ] **Privacy gist is behind the product.** `docs/PRIVACY_POLICY.md` is rewritten (see below); the owner's gist still has the old text and must match before a store upload.
+- [ ] Transcription is still off until the user turns it on. Turning it on by default is a consent decision for the owner.
 
 ## Privacy policy + HubSpot (2026-10-04)
 - `docs/PRIVACY_POLICY.md` rewritten to match the product: what the backend holds (including the encrypted API key and the setup email), transcription audio going browser → Deepgram, recordings kept 90 days, Free syncing calls, new prices, the demo. **The owner's gist is not updated yet — it must match before any store upload.**
