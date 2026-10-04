@@ -19,6 +19,7 @@ export const EVENT_NAMES = [
   'demo_started',
   'demo_finished',
   'demo_setup_clicked',
+  'twilio_guide_opened',
 ] as const;
 
 export const EventNameSchema = z.enum(EVENT_NAMES);

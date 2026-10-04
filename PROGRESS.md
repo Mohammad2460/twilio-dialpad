@@ -9,7 +9,8 @@ _Last updated: 2026-10-04._
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
 - **AI assistant v1 merged and live-tested (2026-10-04)** — item 1 of the relaunch plan. `package.json` is at **1.4.0**. **Not uploaded to the store** — the owner is holding store uploads.
 - **Free vs Pro limits live on the backend (2026-10-04)** and **demo tour built** — item 2 of the relaunch plan is done in code. Not uploaded to the store.
-- **Next: activation fixes** (item 3: Twilio setup guide, trust copy, email-first) → … → **2.0 relaunch**.
+- **Activation fixes built (2026-10-04)** — item 3, except the email-first step (see "Activation" below). Not uploaded to the store.
+- **Next: retention loops** (item 4) → store listing + landing page → **2.0 relaunch**.
 
 ## AI assistant v1 (1.4.0)
 Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
@@ -55,6 +56,18 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - Before any Twilio details are asked for, the side panel opens on a welcome screen whose main button plays a 30-second demo (`NotConfigured.tsx` → `DemoTour.tsx`): a sample call with a live transcript, the notes it produces, then questions about it with written-out sample answers. Setup is one tap away at every step.
 - Sample data only (`src/shared/demo-data.ts`): no account, no backend call, nothing stored.
 - Telemetry: `demo_started`, `demo_finished`, `demo_setup_clicked` (with the step it was clicked from) — compare against `wizard_started` to see whether the demo moves people into setup.
+
+## Activation (setup page + first week)
+- **Setup page** (`src/options/SetupForm.tsx`): a fold-out "No Twilio account yet?" guide (sign up, buy a number, where the SID and token are, what Twilio charges, the trial-account limit), notes under the form saying exactly what happens to the Auth Token and the API key, a link to the public code, and a marketing opt-in that is unticked by default and stored only when ticked.
+- **First-week checklist** (`OnboardingChecklist.tsx`, `src/shared/onboarding.ts`): one line under the status bar that opens into four steps — first call, transcription on, ask AI, load a list. Hides when done, when dismissed, or 14 days after setup.
+- Telemetry: `twilio_guide_opened`.
+
+**Not built — needs the owner**
+- [ ] **Email before credentials** ("send me the setup guide"). No email provider is configured in production, so nothing can be sent yet. Needs: a sending provider + domain, the guide email itself, and policy text for collecting an address before an account exists.
+- [ ] **60-second setup video** for the guide.
+- [ ] **Unsubscribe path.** Nothing clears `marketing_consent_at` yet. Must exist (link in every marketing email) before the first marketing email is sent.
+- [ ] **Privacy policy is behind the product** (`docs/PRIVACY_POLICY.md` and the gist): it still says the API key secret is never stored (it is kept encrypted for backend voice), that email comes only from checkout (setup asks for it), that history is the last 20 calls, and that cloud sync needs a subscription (Free syncs now). Must be corrected before a store upload.
+- [ ] Transcription is still off until the user turns it on. Turning it on by default is a consent decision for the owner.
 
 ## Why the product "died" (2026-09-28 audit)
 - The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.

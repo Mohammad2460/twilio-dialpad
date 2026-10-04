@@ -4,6 +4,7 @@ import type { DialerQueueItem } from '@shared/types';
 import { useDialerStore } from '../stores/dialer-store';
 import { useCallStore } from '../stores/call-store';
 import { usePlan } from '../hooks/use-plan';
+import { markOnboarding } from '@shared/onboarding';
 import { FREE_AUTODIAL_MAX, PRO_AUTODIAL_MAX, isPro } from '@shared/plan';
 
 interface ParseResult {
@@ -106,6 +107,7 @@ export function DialerInput() {
       const toAdd = p.valid.slice(0, room);
       const overflow = p.valid.length - toAdd.length;
       const added = toAdd.length > 0 ? await appendToQueue(toAdd) : [];
+      if (added.length > 0) void markOnboarding('importedList');
       setResult({ valid: added, invalid: p.invalid, duplicates: p.duplicates });
       if (overflow > 0) {
         setCapNote(
