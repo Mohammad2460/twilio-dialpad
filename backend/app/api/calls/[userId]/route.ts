@@ -4,6 +4,9 @@ import { corsHeaders } from '@/lib/cors';
 import { IngestCallSchema } from '@/lib/schemas';
 import { DBCallStore } from '@/lib/db-store';
 import { authenticateUser } from '@/lib/auth';
+import { getActivePricing } from '@/lib/credits';
+import { hubspotAllowed } from '@/lib/plan';
+import { getUserPlan } from '@/lib/usage';
 
 export const runtime = 'nodejs';
 
@@ -49,6 +52,20 @@ export async function POST(
 
   const { meta, transcript } = parsed.data;
 
+  // HubSpot contact data is Pro-only. Enforced here, not just in the extension:
+  // on Free the snapshot is not stored, whatever build sent it. The call itself
+  // is always saved.
+  // A failed plan lookup must not lose the call: it is saved without the snapshot.
+  let contact: typeof meta.contact | null = null;
+  if (meta.contact) {
+    try {
+      const plan = await getUserPlan(userId, await getActivePricing());
+      if (plan && hubspotAllowed(plan.plan)) contact = meta.contact;
+    } catch (e) {
+      console.error('[calls] plan lookup failed — saving without contact', e instanceof Error ? e.message : e);
+    }
+  }
+
   // ── upsert call ──────────────────────────────────────────────────
   const { error } = await supabase.from('calls').upsert(
     {
@@ -60,7 +77,7 @@ export async function POST(
       duration_sec: meta.durationSec,
       status: meta.status,
       has_transcript: !!transcript,
-      contact: meta.contact ?? null,
+      contact,
       transcript: transcript ?? null,
     },
     { onConflict: 'user_id,call_sid' },

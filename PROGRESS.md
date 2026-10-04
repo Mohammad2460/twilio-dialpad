@@ -56,6 +56,11 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - Sample data only (`src/shared/demo-data.ts`): no account, no backend call, nothing stored.
 - Telemetry: `demo_started`, `demo_finished`, `demo_setup_clicked` (with the step it was clicked from) — compare against `wizard_started` to see whether the demo moves people into setup.
 
+## Privacy policy + HubSpot (2026-10-04)
+- `docs/PRIVACY_POLICY.md` rewritten to match the product: what the backend holds (including the encrypted API key and the setup email), transcription audio going browser → Deepgram, recordings kept 90 days, Free syncing calls, new prices, the demo. **The owner's gist is not updated yet — it must match before any store upload.**
+- The old policy promised deletion of cloud call data 30 days after a subscription ends. No code ever did that, so the promise is removed; data is kept until the user asks for deletion. Decide whether to build automatic deletion instead.
+- HubSpot is Pro-only: the extension skips the lookup on Free, the backend does not store a HubSpot contact snapshot for a Free user, and the connector refuses its HubSpot filter on Free. Forwarding stays free. Note: there is currently no screen to connect HubSpot, so this only affects installs that saved a token in an old version.
+
 ## Why the product "died" (2026-09-28 audit)
 - The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.
 - v1.2.0 authenticates with `Bearer <userId>`; the backend stopped accepting that at `LEGACY_AUTH_UNTIL` (2026-07-31) → every store install 401'd on subscription/credits/sync/Pro since 2026-08-01.

@@ -14,6 +14,7 @@ import { DBCallStore } from '@/lib/db-store';
 import { buildMcpTools } from '@/lib/mcp-tools';
 import { getActivePricing } from '@/lib/credits';
 import { getUserPlan } from '@/lib/usage';
+import { hubspotAllowed } from '@/lib/plan';
 
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SERVER_INFO = { name: 'twilio-dialer', version: '1.0.0' };
@@ -75,7 +76,7 @@ export async function POST(
     );
   }
 
-  const tools = buildMcpTools(store);
+  const tools = buildMcpTools(store, { hubspot: hubspotAllowed(plan.plan) });
 
   switch (method) {
     // ── lifecycle ──────────────────────────────────────────────────
