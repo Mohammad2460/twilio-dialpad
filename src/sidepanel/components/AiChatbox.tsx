@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { ensureCloudAccount } from '@shared/cloud';
-import { streamChat, startTopUp, AI_MODEL, TOPUP_PACKS, type ChatTurn } from '@shared/credits';
+import { streamChat, AI_MODEL, type ChatTurn } from '@shared/credits';
+import { isBlocked, limitMessage, meterLevel, questionsLeft } from '@shared/plan';
+import { reloadPlan, usePlan } from '../hooks/use-plan';
 import { splitCitations, type CallDigest, type CallRef } from '@shared/ai-context';
 import { formatForDisplay } from '@shared/phone';
 import { useCallStore } from '../stores/call-store';
@@ -19,12 +21,12 @@ interface Props {
   onOpenCall?: (callSid: string) => void;
 }
 
-type Notice = { kind: 'credits' | 'error'; msg: string };
+type Notice = { kind: 'limit' | 'error'; msg: string };
 
 /**
  * Managed AI chatbox. Answers over one call's transcript, over the user's whole
  * call digest, or as open chat when given neither. Streams answers; the backend
- * meters credits and is the only thing that can refuse spend (402).
+ * counts questions and is the only thing that can refuse one (402).
  */
 export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
@@ -34,6 +36,10 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
   const [notice, setNotice] = useState<Notice | null>(null);
   const [refs, setRefs] = useState<Record<string, CallRef>>({});
   const setView = useCallStore((s) => s.setView);
+  const plan = usePlan();
+  // Known to be out of questions: say so up front instead of after a failed ask.
+  const blocked = !!plan && isBlocked(plan, 'questions');
+  const lowHint = plan && !blocked && meterLevel(plan.questions) === 'low' ? questionsLeft(plan.questions) : null;
   const scrollRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const digestRef = useRef<CallDigest | null>(null);
@@ -106,7 +112,11 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
           });
         } else if (ev.type === 'error') {
           if (ev.status === 402 || ev.error === 'insufficient_credits') {
-            setNotice({ kind: 'credits', msg: 'You’ve used up your AI allowance. Top up or go Pro to keep asking.' });
+            const fresh = await reloadPlan();
+            setNotice({
+              kind: 'limit',
+              msg: fresh ? limitMessage(fresh, 'questions') : 'You’ve used all of this month’s AI questions.',
+            });
           } else if (ev.status === 413) {
             setNotice({ kind: 'error', msg: 'That conversation got too long. Start a new chat and ask again.' });
           } else {
@@ -124,12 +134,17 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
     } finally {
       setStreaming(false);
       abortRef.current = null;
+      void reloadPlan();
     }
   }
 
+  const limitNotice: Notice | null = blocked ? { kind: 'limit', msg: limitMessage(plan, 'questions') } : null;
+  const shown = notice ?? limitNotice;
   const placeholder = !userId
     ? 'Set up your account first'
-    : transcript
+    : blocked
+      ? 'No questions left this month'
+      : transcript
       ? 'Ask about this call…'
       : 'Ask about your calls…';
 
@@ -143,7 +158,7 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
                 key={s}
                 type="button"
                 onClick={() => ask(s)}
-                disabled={!userId || streaming}
+                disabled={!userId || streaming || blocked}
                 className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs text-gray-700 transition hover:border-brand-200 hover:bg-brand-50 disabled:opacity-50"
               >
                 {s}
@@ -180,32 +195,31 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
         ))}
       </div>
 
-      {notice && (
+      {shown && (
         <div
           className={`mx-3 mb-2 rounded px-3 py-2 text-xs ${
-            notice.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800'
+            shown.kind === 'error' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-900'
           }`}
         >
-          <p>{notice.msg}</p>
-          {notice.kind === 'credits' && userId && (
-            <div className="mt-1 flex gap-3">
-              <button
-                type="button"
-                onClick={() => startTopUp(userId, TOPUP_PACKS[0])}
-                className="font-medium text-brand-700 hover:underline"
-              >
-                Top up (${TOPUP_PACKS[0] / 100})
-              </button>
-              <button
-                type="button"
-                onClick={() => setView('pro')}
-                className="font-medium text-brand-700 hover:underline"
-              >
-                See Pro
-              </button>
-            </div>
+          <p className="leading-relaxed">{shown.msg}</p>
+          {shown.kind === 'limit' && (
+            <button
+              type="button"
+              onClick={() => setView('pro')}
+              className={
+                plan?.plan === 'free'
+                  ? 'mt-1.5 rounded bg-brand-600 px-2.5 py-1 font-medium text-white hover:bg-brand-700'
+                  : 'mt-1 font-medium text-brand-700 hover:underline'
+              }
+            >
+              {plan?.plan === 'free' ? 'Upgrade to Pro' : 'See usage'}
+            </button>
           )}
         </div>
+      )}
+
+      {lowHint && !shown && (
+        <p className="mx-3 mb-1.5 text-[11px] text-amber-700">{lowHint} this month</p>
       )}
 
       <div className="flex gap-2 border-t border-gray-200 p-3">
@@ -225,13 +239,13 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && ask()}
           placeholder={placeholder}
-          disabled={!userId || streaming}
+          disabled={!userId || streaming || blocked}
           className="min-w-0 flex-1 rounded border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-50"
         />
         <button
           type="button"
           onClick={() => ask()}
-          disabled={!userId || streaming || !draft.trim()}
+          disabled={!userId || streaming || blocked || !draft.trim()}
           className="rounded bg-brand-600 px-3 py-2 text-sm text-white disabled:opacity-40"
         >
           {streaming ? '…' : 'Ask'}

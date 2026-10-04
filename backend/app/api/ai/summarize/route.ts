@@ -4,16 +4,10 @@ import { corsHeaders } from '@/lib/cors';
 import { authenticate } from '@/lib/auth';
 import {
   getActivePricing,
-  estimateLlmCredits,
   estimateTokens,
   enforceLlmCaps,
   costFromOpenAiUsage,
-  usdToCredits,
-  reserve,
-  settleWithRetry,
-  refund,
   CapExceededError,
-  InsufficientCreditsError,
   type OpenAiUsage,
 } from '@/lib/credits';
 import {
@@ -23,11 +17,12 @@ import {
   parseInsight,
   describeVendorError,
 } from '@/lib/ai-prompts';
-import { reservationKey } from '@/lib/reservation-key';
+import { dayPeriod, limitBody } from '@/lib/plan';
+import { getUserPlan, giveBackUsage, recordUsageCost, takeUsage } from '@/lib/usage';
 
 export const runtime = 'nodejs';
-// Headroom over VENDOR_TIMEOUT_MS: the vendor call must fail (and release the
-// hold) before the platform can stop the function between reserve and settle.
+// Headroom over VENDOR_TIMEOUT_MS: the vendor call must fail (and give the
+// summary back) before the platform can stop the function mid-request.
 export const maxDuration = 300;
 const VENDOR_TIMEOUT_MS = 120_000;
 
@@ -56,9 +51,9 @@ interface SummarizeBody {
  * POST /api/ai/summarize — structured post-call notes (summary, objections,
  * promises, next step) for one transcript.
  *
- * Auth: device secret. Metered by credits like the chatbox: reserve an estimated
- * hold → one JSON completion → settle to the real token usage → refund if the
- * vendor call fails. The transcript is passed through and never stored or logged.
+ * Auth: device secret. Summaries do not use the monthly AI questions; a daily
+ * cap per plan bounds them instead. The real vendor cost is recorded from the
+ * usage object. The transcript is passed through and never stored or logged.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
@@ -101,22 +96,16 @@ export async function POST(req: NextRequest) {
     throw e;
   }
 
-  const estCredits = estimateLlmCredits(estInputTokens, model, pricing);
-  let requestId: string;
-  try {
-    requestId = await reserve(
-      userId,
-      estCredits,
-      reservationKey('insight', body.idempotencyKey),
-      model,
-      pricing.version,
-    );
-  } catch (e) {
-    if (e instanceof InsufficientCreditsError) {
-      return j({ error: 'insufficient_credits', need: estCredits }, 402);
-    }
-    throw e;
+  const now = Date.now();
+  const plan = await getUserPlan(userId, pricing, now);
+  if (!plan) return j({ error: 'Unauthorized' }, 401);
+  const day = dayPeriod(now);
+  if (!(await takeUsage(userId, 'summaries', day, 1, plan.limits.summaries_per_day))) {
+    return j(limitBody('summaries', plan.plan, plan.limits.summaries_per_day, now), 402);
   }
+  const requestId = crypto.randomUUID();
+  // The model did not run (or produced nothing billable): the summary is not counted.
+  const notCounted = () => giveBackUsage(userId, 'summaries', day, 1);
 
   let content: string;
   let usage: OpenAiUsage;
@@ -136,42 +125,21 @@ export async function POST(req: NextRequest) {
     usage = (completion.usage ?? {}) as OpenAiUsage;
   } catch (e) {
     console.error('[ai/summarize] vendor call failed', requestId, describeVendorError(e));
-    // Vendor call failed before producing usage — nothing incurred, release the hold.
-    try {
-      const balance = await refund(requestId, 0, null);
-      return j({ error: 'generation_failed', balance }, 502);
-    } catch {
-      return j({ error: 'generation_failed' }, 502);
-    }
+    await notCounted();
+    return j({ error: 'generation_failed' }, 502);
   }
 
-  // Settlement MUST come from real usage. With no usage object there is no real
-  // cost to bill, so nothing is charged and nothing is delivered: release the
-  // hold and report a failed generation.
+  // The recorded cost MUST come from real usage. With no usage object there is
+  // nothing real to record and nothing is delivered: report a failed generation.
   if (typeof usage.prompt_tokens !== 'number' || usage.prompt_tokens <= 0) {
     console.error('[ai/summarize] vendor returned no usage', requestId);
-    try {
-      const balance = await refund(requestId, 0, null);
-      return j({ error: 'generation_failed', balance }, 502);
-    } catch {
-      return j({ error: 'generation_failed' }, 502);
-    }
+    await notCounted();
+    return j({ error: 'generation_failed' }, 502);
   }
-  const vendorUsd = costFromOpenAiUsage(usage, model, pricing);
-  const credits = usdToCredits(vendorUsd, pricing);
-
-  // The model has run, so the work is delivered either way. If the ledger stays
-  // unreachable the charge is lost, but failing the request would only make the
-  // client ask again and run the model a second time.
-  let balance: number | undefined;
-  try {
-    balance = await settleWithRetry(requestId, credits, vendorUsd, model);
-  } catch (e) {
-    console.error('[ai/summarize] settle failed', requestId, e instanceof Error ? e.message : e);
-  }
+  await recordUsageCost(userId, requestId, model, costFromOpenAiUsage(usage, model, pricing), pricing.version);
 
   const insight = parseInsight(content);
-  if (!insight) return j({ error: 'bad_output', credits, balance }, 502);
+  if (!insight) return j({ error: 'bad_output' }, 502);
 
-  return j({ insight, model, credits, balance });
+  return j({ insight, model });
 }

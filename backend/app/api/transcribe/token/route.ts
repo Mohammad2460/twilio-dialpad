@@ -13,7 +13,16 @@ import {
 } from '@/lib/credits';
 import { reservationKey } from '@/lib/reservation-key';
 import { WINDOW_SECONDS, TRANSCRIBE_MODEL_PREFIX } from '@/lib/transcribe-metering';
-import { settleWindow, findRetryWindow, TRANSCRIBE_KEY_SCOPE } from '@/lib/transcribe-settle';
+import { findRetryWindow, TRANSCRIBE_KEY_SCOPE } from '@/lib/transcribe-settle';
+import { limitBody } from '@/lib/plan';
+import {
+  findRetryAllowanceWindow,
+  getUserPlan,
+  openAllowanceWindow,
+  releaseAllowanceWindow,
+  settleAnyWindow,
+  type AllowanceWindow,
+} from '@/lib/usage';
 
 export const runtime = 'nodejs';
 
@@ -42,12 +51,12 @@ interface TokenBody {
 /**
  * POST /api/transcribe/token — managed transcription metering + token mint.
  *
- * Flow per window: settle the previous window to actual usage → reserve the next
- * window's estimated credits → mint a short-lived Deepgram JWT. 402 when the
- * balance can't cover the next window (the client then stops transcription; the
- * call is unaffected). Device-auth; requires active access (trial or Pro):
- * free during trial, credit-metered on Pro. Credits stay banked when Pro
- * lapses and become usable again on renewal.
+ * Flow per window: settle the previous window to actual usage → take the next
+ * window from the plan's monthly allowance (or, once that is used up, reserve
+ * it from a balance the user already holds) → mint a short-lived Deepgram JWT.
+ * 402 when neither covers the next window: the client stops transcription and
+ * the call is unaffected. Device-auth. Free and Pro both transcribe; only the
+ * monthly limit differs.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
@@ -56,23 +65,14 @@ export async function POST(req: NextRequest) {
 
   if (!process.env.DEEPGRAM_API_KEY) return j({ error: 'managed_transcription_unavailable' }, 503);
 
-  // Managed transcription requires active access: FREE during the 7-day trial
-  // (no credit reserve/debit), credit-metered on Pro. Expired/free users are
-  // blocked even with banked credits — those unlock again when Pro renews.
-  const { data: trialing } = await supabase.rpc('user_is_trialing', { uid: userId });
-  if (!trialing) {
-    const { data: access } = await supabase.rpc('user_has_access', { uid: userId });
-    if (!access) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
-      return j(
-        { error: 'subscription_required', topUpUrl: `${baseUrl}/api/checkout/${userId}` },
-        402,
-      );
-    }
-  }
+  const now = Date.now();
+  const pricing = await getActivePricing();
+  const plan = await getUserPlan(userId, pricing, now);
+  if (!plan) return j({ error: 'Unauthorized' }, 401);
 
-  // Free trial transcription is capped per rolling 24h (abuse guard on our key).
-  if (trialing && !(await takeTrialMint(supabase, userId))) {
+  // Trial transcription is also capped per rolling 24h (abuse guard on our key:
+  // a trial account costs nothing to create).
+  if (plan.trialing && !(await takeTrialMint(supabase, userId))) {
     return j({ error: 'trial_transcription_cap' }, 402);
   }
 
@@ -83,7 +83,6 @@ export async function POST(req: NextRequest) {
     body = {};
   }
 
-  const pricing = await getActivePricing();
   const model = typeof body.model === 'string' ? body.model : 'nova-3';
   if (!pricing.deepgram[model]) return j({ error: 'unknown_model' }, 400);
 
@@ -91,60 +90,72 @@ export async function POST(req: NextRequest) {
   //    settle).
   if (body.prevRequestId) {
     try {
-      await settleWindow(userId, body.prevRequestId, body.prevSeconds, pricing);
+      await settleAnyWindow(userId, body.prevRequestId, body.prevSeconds, pricing);
     } catch (e) {
       console.error('[transcribe/token] settle prev failed (non-fatal)', e);
     }
   }
 
-  // ── Reserve the next window. The ledger key is always generated here; the
-  //    one exception to a fresh hold is the client retrying an open it just
-  //    made, which gets its own still-pending window back.
-  const estCredits = estimateTranscriptionCredits(WINDOW_SECONDS / 60, model, pricing);
+  // ── Next window. The one exception to a fresh window is the client retrying
+  //    an open it just made, which gets its own still-pending window back.
+  let allowance: AllowanceWindow | null = null;
   let requestId = '';
   let reserved = false;
-  if (!trialing) {
+  let opened = false;
+  try {
+    allowance = await findRetryAllowanceWindow(userId, body.windowKey, model, now);
+  } catch (e) {
+    console.error('[transcribe/token] retry lookup failed (non-fatal)', e);
+  }
+  if (!allowance) {
+    allowance = await openAllowanceWindow(userId, model, body.windowKey, plan.limits.transcribe_seconds, now);
+    opened = !!allowance;
+  }
+
+  if (allowance) {
+    requestId = allowance.id;
+  } else {
+    // Allowance used up — fall back to a balance the user already holds.
+    const estCredits = estimateTranscriptionCredits(WINDOW_SECONDS / 60, model, pricing);
     try {
       requestId = (await findRetryWindow(userId, body.windowKey, model)) ?? '';
     } catch (e) {
       console.error('[transcribe/token] retry lookup failed (non-fatal)', e);
     }
-  }
-  if (!trialing && !requestId) {
-    try {
-      requestId = await reserve(
-        userId,
-        estCredits,
-        reservationKey(TRANSCRIBE_KEY_SCOPE, body.windowKey),
-        `${TRANSCRIBE_MODEL_PREFIX}${model}`,
-        pricing.version,
-      );
-      reserved = true;
-    } catch (e) {
-      if (e instanceof InsufficientCreditsError) {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
-        return j(
-          { error: 'insufficient_credits', need: estCredits, topUpUrl: `${baseUrl}/api/checkout/${userId}` },
-          402,
+    if (!requestId) {
+      try {
+        requestId = await reserve(
+          userId,
+          estCredits,
+          reservationKey(TRANSCRIBE_KEY_SCOPE, body.windowKey),
+          `${TRANSCRIBE_MODEL_PREFIX}${model}`,
+          pricing.version,
         );
+        reserved = true;
+      } catch (e) {
+        if (e instanceof InsufficientCreditsError) {
+          return j(limitBody('transcription', plan.plan, plan.limits.transcribe_seconds, now), 402);
+        }
+        throw e;
       }
-      throw e;
     }
   }
 
-  // ── Mint the token; refund the reservation made here if Deepgram is unreachable.
+  // ── Mint the token; undo the window taken here if Deepgram is unreachable.
   try {
     const grant = await mintDeepgramToken(TTL_SECONDS);
     return j({
       token: grant.access_token,
       expiresIn: grant.expires_in,
       requestId,
-      windowSeconds: WINDOW_SECONDS,
+      windowSeconds: allowance?.seconds ?? WINDOW_SECONDS,
       model,
     });
   } catch (e) {
     console.error('[transcribe/token] mint failed', e);
-    if (reserved) {
+    if (allowance && opened) {
+      await releaseAllowanceWindow(userId, allowance.id);
+    } else if (reserved) {
       try {
         await refund(requestId, 0, null);
       } catch {

@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import { useCallStore } from '../stores/call-store';
 import { getManager } from '../hooks/use-device';
 import { IncomingToggle } from './IncomingToggle';
-import { getSubscription, ensureCloudAccount, type Subscription } from '@shared/cloud';
 import { useMicPermission } from '../hooks/use-mic-permission';
-import { getCachedCreditState, getCreditBalance } from '@shared/credits';
+import { isTrial, isTrialEnded, usageChip, fmtMoney } from '@shared/plan';
+import { usePlan } from '../hooks/use-plan';
 
 const STATE_META: Record<string, { text: string; color: string }> = {
   uninitialized: { text: 'Not initialized', color: 'bg-gray-200 text-gray-600' },
@@ -21,9 +21,10 @@ export function StatusBar() {
   const meta = STATE_META[deviceState] ?? STATE_META.uninitialized;
   const needsRetry = deviceState === 'uninitialized' || deviceState === 'offline' || deviceState === 'error';
   const cloudBlocked = useCloudSyncBlocked();
-  const trialSub = useTrialSubscription();
+  const plan = usePlan();
+  const trialDays = plan && isTrial(plan) ? (plan.trialDaysLeft ?? 0) : null;
+  const trialEndedSeen = useStoredFlag('trialEndedSeen');
   const setView = useCallStore((s) => s.setView);
-  const callCount = useCallStore((s) => s.history.length);
   const micPerm = useMicPermission();
   const micNeedsGrant = micPerm === 'prompt' || micPerm === 'denied';
 
@@ -57,7 +58,7 @@ export function StatusBar() {
               ↺ Connect
             </button>
           )}
-          <CreditsChip />
+          <UsageChip />
         </div>
       </header>
 
@@ -97,34 +98,49 @@ export function StatusBar() {
         </div>
       )}
 
-      {/* Trial countdown — persistent compact badge when actively trialing */}
-      {trialSub && trialSub.daysLeft !== undefined && trialSub.daysLeft > 2 && (
-        <div className="bg-brand-50 border-b border-brand-100 px-3 py-1 flex items-center justify-between gap-2">
+      {/* Trial countdown — one quiet line; the last two days say what happens next. */}
+      {plan && trialDays !== null && (
+        <div className="flex items-center justify-between gap-2 border-b border-brand-100 bg-brand-50 px-3 py-1.5">
           <button
             type="button"
             onClick={() => setView('pro')}
-            className="text-xs text-brand-700 hover:text-brand-800 hover:underline text-left"
+            className="text-left text-xs text-brand-700 hover:text-brand-800 hover:underline"
           >
-            Pro trial — {trialSub.daysLeft} day{trialSub.daysLeft === 1 ? '' : 's'} left
+            Pro trial — {trialDays} day{trialDays === 1 ? '' : 's'} left
+            {trialDays <= 2 && <span className="text-brand-600"> · then Free, calling stays on</span>}
           </button>
+          {trialDays <= 2 && (
+            <button
+              type="button"
+              onClick={() => setView('pro')}
+              className="shrink-0 rounded bg-brand-600 px-2 py-1 text-xs font-medium text-white hover:bg-brand-700"
+            >
+              Keep Pro · {fmtMoney(plan.prices.monthlyCents)}/mo
+            </button>
+          )}
         </div>
       )}
 
-      {/* Day 5–6 loss-aversion banner — coach tone, uses real call count */}
-      {trialSub && trialSub.daysLeft !== undefined && trialSub.daysLeft <= 2 && (
-        <div className="bg-amber-50 border-b border-amber-100 px-3 py-2 flex items-center justify-between gap-2">
-          <span className="text-xs text-amber-900 leading-snug">
-            {callCount > 0
-              ? <>You've made {callCount} call{callCount === 1 ? '' : 's'} on Pro. Keep your transcripts, AI analysis and unlimited dialing — upgrade for $9/mo.</>
-              : <>Your Pro trial ends in {trialSub.daysLeft} day{trialSub.daysLeft === 1 ? '' : 's'}. Lock in transcripts, AI analysis and unlimited dialing for $9/mo.</>
-            }
-          </span>
+      {/* Trial over, never subscribed — said once, then it is just the Free plan. */}
+      {plan && isTrialEnded(plan) && trialEndedSeen.value === false && (
+        <div className="flex items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
           <button
             type="button"
-            onClick={() => setView('pro')}
-            className="shrink-0 rounded bg-amber-600 px-2 py-1 text-white text-xs hover:bg-amber-700"
+            onClick={() => {
+              trialEndedSeen.set();
+              setView('pro');
+            }}
+            className="text-left text-xs leading-snug text-gray-700 hover:underline"
           >
-            Upgrade
+            Your Pro trial ended — you’re on Free. Calling works as before.
+          </button>
+          <button
+            type="button"
+            onClick={trialEndedSeen.set}
+            aria-label="Dismiss"
+            className="shrink-0 rounded px-1.5 text-sm text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+          >
+            ×
           </button>
         </div>
       )}
@@ -132,27 +148,23 @@ export function StatusBar() {
   );
 }
 
-/**
- * Fetches subscription on mount. Returns the Subscription only when the user
- * is actively trialing with access; null otherwise (no banner rendered).
- */
-function useTrialSubscription(): Subscription | null {
-  const [sub, setSub] = useState<Subscription | null>(null);
+/** A one-way "seen" flag in extension storage. `value` is null until read. */
+function useStoredFlag(key: string): { value: boolean | null; set: () => void } {
+  const [value, setValue] = useState<boolean | null>(null);
   useEffect(() => {
     let cancelled = false;
-    chrome.storage.local.get('cloudUserId').then(({ cloudUserId }) => {
-      if (cancelled || typeof cloudUserId !== 'string') return;
-      getSubscription(cloudUserId)
-        .then((s) => {
-          if (!cancelled && s && s.status === 'trialing' && s.hasAccess) {
-            setSub(s);
-          }
-        })
-        .catch(() => {}); // silent — never break UI
+    chrome.storage.local.get(key).then((got) => {
+      if (!cancelled) setValue(!!got[key]);
     });
     return () => { cancelled = true; };
-  }, []);
-  return sub;
+  }, [key]);
+  return {
+    value,
+    set: () => {
+      setValue(true);
+      void chrome.storage.local.set({ [key]: true });
+    },
+  };
 }
 
 /**
@@ -180,40 +192,28 @@ function useCloudSyncBlocked(): boolean {
   return blocked;
 }
 
-/** Compact AI-credits chip in the header. Cached-first, then live. Taps → Pro. */
-function CreditsChip() {
-  const [balance, setBalance] = useState<number | null>(null);
+/**
+ * Usage chip in the header. Nothing while there is plenty left; from 80% used
+ * it shows what is left of the tightest allowance. Taps → Plan.
+ */
+function UsageChip() {
+  const plan = usePlan();
   const setView = useCallStore((s) => s.setView);
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      const cached = await getCachedCreditState();
-      if (!cancelled && cached) setBalance(cached.balance);
-      try {
-        const acct = await ensureCloudAccount();
-        const state = await getCreditBalance(acct.userId);
-        if (!cancelled) setBalance(state.balance);
-      } catch {
-        /* not registered */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  if (balance === null) return null;
-  const low = balance <= 50;
+  const chip = plan ? usageChip(plan) : null;
+  if (!chip) return null;
   return (
     <button
       type="button"
       onClick={() => setView('pro')}
-      title="AI credits — tap to manage"
+      title={`${chip.kind === 'questions' ? 'AI questions' : 'Transcription'} this month — tap for details`}
       className={[
-        'rounded-full px-2 py-0.5 text-xs font-medium border',
-        low ? 'bg-amber-50 text-amber-800 border-amber-200' : 'bg-gray-50 text-gray-700 border-gray-200',
+        'rounded-full border px-2 py-0.5 text-xs font-medium tabular-nums',
+        chip.level === 'out'
+          ? 'border-red-200 bg-red-50 text-red-700'
+          : 'border-amber-200 bg-amber-50 text-amber-800',
       ].join(' ')}
     >
-      {balance} cr
+      {chip.label}
     </button>
   );
 }

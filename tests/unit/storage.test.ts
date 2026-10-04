@@ -73,7 +73,7 @@ describe('storage', () => {
     expect(await storage.getSettings()).toBeNull();
   });
 
-  it('caps history at 20 entries', async () => {
+  it('keeps history beyond a screenful, newest first', async () => {
     const { storage } = await import('../../src/shared/storage');
     for (let i = 0; i < 25; i++) {
       await storage.pushHistory({
@@ -86,7 +86,7 @@ describe('storage', () => {
       });
     }
     const h = await storage.getHistory();
-    expect(h).toHaveLength(20);
+    expect(h).toHaveLength(25);
     expect(h[0].id).toBe('24');
   });
 });

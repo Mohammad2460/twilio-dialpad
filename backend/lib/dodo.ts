@@ -115,7 +115,7 @@ interface CheckoutResponse {
 }
 
 /**
- * Create a hosted checkout session for the $9/month plan.
+ * Create a hosted checkout session for a subscription product.
  * Embeds userId in metadata so webhooks can identify the customer.
  */
 export async function createCheckoutSession(
@@ -143,6 +143,68 @@ export async function createCheckoutSession(
     throw new Error('[dodo] checkout response missing checkout_url');
   }
   return { checkout_url: data.checkout_url };
+}
+
+// ── Pro plan products (Free / Pro pricing) ───────────────────────
+// New checkouts use one product per billing cycle, found by name or created.
+// Name and price come from pricing_config (see lib/plan.ts): a price change is
+// a new name + price there, which creates a new product next to the old ones.
+// Nothing here ever edits, renames, re-prices or archives an existing product,
+// and existing subscriptions stay on whatever product they were bought with.
+
+const _planProductCache = new Map<string, string>();
+
+/** How long a subscription runs before it ends on its own. Billing repeats
+ *  every `payment_frequency_*` inside this period. */
+const SUBSCRIPTION_YEARS = 20;
+
+/** Idempotent: product_id of the recurring product with this exact name, created if missing. */
+export async function ensurePlanProduct(
+  cycle: 'monthly' | 'yearly',
+  product: { name: string; price_cents: number },
+): Promise<string> {
+  const cached = _planProductCache.get(product.name);
+  if (cached) return cached;
+
+  const listRes = await dodoFetch('/products?page_size=100');
+  if (!listRes.ok) {
+    // Never create on a failed lookup — that is how duplicates would appear.
+    throw new Error(`[dodo] list products failed: ${listRes.status} ${await safeText(listRes)}`);
+  }
+  const data = (await listRes.json()) as ListProductsResponse;
+  const existing = (data.items ?? []).find((p) => p.name === product.name && p.is_recurring !== false);
+  if (existing?.product_id) {
+    _planProductCache.set(product.name, existing.product_id);
+    return existing.product_id;
+  }
+
+  const interval = cycle === 'yearly' ? 'Year' : 'Month';
+  const createRes = await dodoFetch('/products', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: product.name,
+      tax_category: 'saas',
+      price: {
+        type: 'recurring_price',
+        currency: CURRENCY,
+        price: product.price_cents,
+        discount: 0,
+        purchasing_power_parity: false,
+        payment_frequency_count: 1,
+        payment_frequency_interval: interval,
+        subscription_period_count: SUBSCRIPTION_YEARS,
+        subscription_period_interval: 'Year',
+        trial_period_days: 0,
+      },
+    }),
+  });
+  if (!createRes.ok) {
+    throw new Error(`[dodo] plan product create failed: ${createRes.status} ${await safeText(createRes)}`);
+  }
+  const created = (await createRes.json()) as DodoProduct;
+  if (!created.product_id) throw new Error('[dodo] plan product create returned no product_id');
+  _planProductCache.set(product.name, created.product_id);
+  return created.product_id;
 }
 
 // ── credit top-up (v2) ───────────────────────────────────────────

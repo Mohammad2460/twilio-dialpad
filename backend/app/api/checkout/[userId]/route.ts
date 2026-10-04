@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { corsHeaders } from '@/lib/cors';
-import { ensureProduct, createCheckoutSession } from '@/lib/dodo';
+import { ensurePlanProduct, createCheckoutSession } from '@/lib/dodo';
+import { getActivePricing } from '@/lib/credits';
+import { checkoutProduct, parseCycle } from '@/lib/plan';
 import { authenticateUser } from '@/lib/auth';
 
 export const runtime = 'nodejs';
@@ -14,7 +16,8 @@ export async function OPTIONS() {
 
 /**
  * POST /api/checkout/[userId]
- * Creates a Dodo checkout session for the $9/month plan.
+ * Creates a Dodo checkout session for Pro. Optional body `{ plan: 'monthly' |
+ * 'yearly' }`; a request with no body (builds already in the store) is monthly.
  * Returns { checkout_url } to redirect the user.
  */
 export async function POST(
@@ -50,8 +53,18 @@ export async function POST(
     );
   }
 
+  // Body is optional — older builds send none.
+  let requested: unknown;
   try {
-    const productId = await ensureProduct();
+    requested = ((await req.json()) as { plan?: unknown } | null)?.plan;
+  } catch {
+    requested = undefined;
+  }
+  const cycle = parseCycle(requested);
+
+  try {
+    const pricing = await getActivePricing();
+    const productId = await ensurePlanProduct(cycle, checkoutProduct(pricing, cycle));
     const returnUrl = `${BASE_URL}/api/checkout/success`;
     const { checkout_url } = await createCheckoutSession(userId, productId, returnUrl);
     return NextResponse.json({ checkout_url }, { headers: corsHeaders });

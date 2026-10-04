@@ -27,6 +27,10 @@ async function run(req: NextRequest) {
   });
   if (reapErr) console.error('[credits/expire] reap failed (non-fatal)', reapErr);
 
+  // Close allowance transcription windows that were never settled (counted in full).
+  const { error: winErr } = await supabase.rpc('reap_transcribe_windows', { p_minutes: 30 });
+  if (winErr) console.error('[credits/expire] window reap failed (non-fatal)', winErr.message);
+
   // Prune trial-cap rows past the 24h window (see lib/trial-cap.ts). Non-fatal.
   const { error: pruneErr } = await supabase
     .from('trial_transcribe_mints')

@@ -11,11 +11,9 @@ import { getSubscription, type Subscription } from './cloud';
 export type Tier = 'free' | 'pro';
 
 /**
- * Capabilities.
- * - Free tier: calling, redial, 20-call history, BYO-key live transcript,
- *   talk-ratio, auto-dial capped 15/day, HubSpot pop, gpt-5-mini chat.
- * - Trial (7d): adds `managed_transcription` (free, no credits).
- * - Paid only: everything else below.
+ * Features that exist only on Pro (paid or trial). Everything metered —
+ * transcription minutes, AI questions — is on every plan and is counted by the
+ * backend instead; see plan.ts.
  */
 export type Feature =
   | 'managed_transcription'

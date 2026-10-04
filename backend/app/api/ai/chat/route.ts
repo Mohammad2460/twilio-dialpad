@@ -23,6 +23,8 @@ import {
 } from '@/lib/credits';
 import { chatDataMessage, chatSystemPrompt, sanitizeTurns, type ChatMode, describeVendorError } from '@/lib/ai-prompts';
 import { reservationKey } from '@/lib/reservation-key';
+import { limitBody, monthPeriod } from '@/lib/plan';
+import { getUserPlan, giveBackUsage, recordUsageCost, takeUsage } from '@/lib/usage';
 
 export const runtime = 'nodejs';
 
@@ -64,11 +66,13 @@ const MODES: readonly ChatMode[] = ['call', 'general', 'calls'];
 /**
  * POST /api/ai/chat — managed Claude chatbox over a call transcript.
  *
- * Auth: device secret. Metered by credits (NOT Pro-gated for Haiku — free tier
- * gets a small taste grant). Premium models (Sonnet/Opus) require Pro.
+ * Auth: device secret. Each question counts as one against the plan's monthly
+ * allowance, whatever it costs. Past the allowance, a balance the user already
+ * holds is spent instead (reserve → settle from real usage); with neither, 402.
+ * Premium models (Claude) require a paid subscription.
  *
- * Flow: reserve an estimated hold → stream the completion to the client (SSE) →
- * settle to the real token usage on completion → refund on failure.
+ * Flow: take one question (or reserve a hold) → stream the completion (SSE) →
+ * record / settle the real vendor cost → give the question back on failure.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
@@ -129,15 +133,25 @@ export async function POST(req: NextRequest) {
   const estCredits = estimateLlmCredits(estInputTokens, model, pricing);
   const idemKey = reservationKey('chat', body.idempotencyKey);
 
+  const now = Date.now();
+  const plan = await getUserPlan(userId, pricing, now);
+  if (!plan) return j({ error: 'Unauthorized' }, 401);
+  const period = monthPeriod(now);
+
+  // Monthly allowance first; then a balance the user already holds; then stop.
   let requestId: string;
-  try {
-    requestId = await reserve(userId, estCredits, idemKey, model, pricing.version);
-  } catch (e) {
-    if (e instanceof InsufficientCreditsError) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://dialler-mcp.vercel.app';
-      return j({ error: 'insufficient_credits', need: estCredits, topUpUrl: `${baseUrl}/api/checkout/${userId}` }, 402);
+  const fromAllowance = await takeUsage(userId, 'ai_questions', period, 1, plan.limits.ai_questions);
+  if (fromAllowance) {
+    requestId = crypto.randomUUID();
+  } else {
+    try {
+      requestId = await reserve(userId, estCredits, idemKey, model, pricing.version);
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        return j(limitBody('questions', plan.plan, plan.limits.ai_questions, now), 402);
+      }
+      throw e;
     }
-    throw e;
   }
 
   // Generation and settlement run to completion even when the client stops
@@ -222,25 +236,33 @@ export async function POST(req: NextRequest) {
           }
         } catch (e) {
           console.error('[ai/chat] vendor call failed', requestId, describeVendorError(e));
-          // The vendor call itself failed — no usage captured, release the hold.
-          try {
-            const balance = await refund(requestId, 0, null);
-            send('error', { error: 'generation_failed', balance });
-          } catch {
-            send('error', { error: 'generation_failed' });
+          // The vendor call itself failed — no usage captured: give the question
+          // back, or release the hold.
+          if (fromAllowance) {
+            await giveBackUsage(userId, 'ai_questions', period, 1);
+          } else {
+            try {
+              await refund(requestId, 0, null);
+            } catch {
+              /* reaper backstops */
+            }
           }
+          send('error', { error: 'generation_failed' });
           return;
         }
 
         // The answer is already delivered; a ledger error here must not turn
         // into a refund of work the vendor has billed.
-        try {
-          const balance = await settleWithRetry(requestId, credits, vendorUsd, model);
-          send('done', { credits, balance });
-        } catch (e) {
-          console.error('[ai/chat] settle failed', requestId, e instanceof Error ? e.message : e);
-          send('done', { credits });
+        if (fromAllowance) {
+          await recordUsageCost(userId, requestId, model, vendorUsd, pricing.version);
+        } else {
+          try {
+            await settleWithRetry(requestId, credits, vendorUsd, model);
+          } catch (e) {
+            console.error('[ai/chat] settle failed', requestId, e instanceof Error ? e.message : e);
+          }
         }
+        send('done', {});
       } finally {
         close();
         finish();

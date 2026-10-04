@@ -52,7 +52,7 @@ export function ReconnectBanner({ settings }: { settings: Settings }) {
     <div className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
       <div className="flex items-center justify-between gap-2">
         <span>
-          <strong>Reconnect your account</strong> — a one-time step to restore sync, credits and Pro
+          <strong>Reconnect your account</strong> — a one-time step to restore sync and your plan
           features. Calling still works.
         </span>
         {!open && (

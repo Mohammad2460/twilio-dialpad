@@ -37,7 +37,7 @@ export function App() {
 
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-900">
           Everything else — Twilio details, transcription, Claude connector, SMS,
-          recordings, subscription &amp; credits — now lives in the <strong>side panel</strong>.
+          recordings and your plan — now lives in the <strong>side panel</strong>.
           Open the extension from the toolbar.
         </div>
 

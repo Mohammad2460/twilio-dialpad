@@ -73,7 +73,9 @@ export function TranscriptPanel() {
           ref={scrollRef}
           className="max-h-40 overflow-y-auto border-t border-gray-200 bg-white px-3 py-2 text-xs"
         >
-          {error ? (
+          {error?.startsWith('Transcription paused') ? (
+            <p className="break-words text-amber-800">{error}</p>
+          ) : error ? (
             <p className="break-words text-red-600">
               <span className="font-semibold">Transcription error:</span> {error}
             </p>

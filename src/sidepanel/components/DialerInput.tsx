@@ -2,6 +2,9 @@ import { useMemo, useRef, useState } from 'react';
 import { normalizeE164 } from '@shared/phone';
 import type { DialerQueueItem } from '@shared/types';
 import { useDialerStore } from '../stores/dialer-store';
+import { useCallStore } from '../stores/call-store';
+import { usePlan } from '../hooks/use-plan';
+import { FREE_AUTODIAL_MAX, PRO_AUTODIAL_MAX, isPro } from '@shared/plan';
 
 interface ParseResult {
   valid: DialerQueueItem[];
@@ -71,8 +74,6 @@ function parseInput(text: string, existingNumbers: Set<string>, dnc: Set<string>
   return { valid, invalid, duplicates };
 }
 
-/** Hard queue ceiling — keeps sessions manageable and Twilio-friendly. */
-const MAX_QUEUE = 100;
 
 export function DialerInput() {
   const [text, setText] = useState('');
@@ -83,6 +84,10 @@ export function DialerInput() {
   const queue = useDialerStore((s) => s.queue);
   const dncList = useDialerStore((s) => s.dncList);
   const appendToQueue = useDialerStore((s) => s.appendToQueue);
+  const setView = useCallStore((s) => s.setView);
+  // Free: a short pasted list. Pro: a longer list and file import.
+  const pro = isPro(usePlan());
+  const MAX_QUEUE = pro ? PRO_AUTODIAL_MAX : FREE_AUTODIAL_MAX;
 
   const parsed = useMemo(() => {
     if (!text.trim()) return null;
@@ -103,7 +108,11 @@ export function DialerInput() {
       const added = toAdd.length > 0 ? await appendToQueue(toAdd) : [];
       setResult({ valid: added, invalid: p.invalid, duplicates: p.duplicates });
       if (overflow > 0) {
-        setCapNote(`Queue holds ${MAX_QUEUE} numbers — ${overflow} not added. Clear finished calls to load more.`);
+        setCapNote(
+          pro
+            ? `Queue holds ${MAX_QUEUE} numbers — ${overflow} not added. Clear finished calls to load more.`
+            : `Free lists hold ${MAX_QUEUE} numbers — ${overflow} not added. Pro holds ${PRO_AUTODIAL_MAX} and imports CSV files.`,
+        );
       }
       setText('');
     } finally {
@@ -142,20 +151,20 @@ export function DialerInput() {
       />
       <button
         type="button"
-        onClick={() => fileRef.current?.click()}
-        disabled={submitting || queue.length >= MAX_QUEUE}
+        onClick={() => (pro ? fileRef.current?.click() : setView('pro'))}
+        disabled={submitting || (pro && queue.length >= MAX_QUEUE)}
         className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50 px-3 py-3 text-sm font-medium text-gray-700 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700 disabled:opacity-50"
       >
         <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
           <path d="M9 13a1 1 0 1 0 2 0V6.41l2.3 2.3a1 1 0 0 0 1.4-1.42l-4-4a1 1 0 0 0-1.4 0l-4 4A1 1 0 0 0 6.7 8.7L9 6.4V13Z" />
           <path d="M4 14a1 1 0 0 1 1 1v1h10v-1a1 1 0 1 1 2 0v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1a1 1 0 0 1 1-1Z" />
         </svg>
-        Upload CSV or TXT — up to {MAX_QUEUE} numbers
+        {pro ? `Upload CSV or TXT — up to ${MAX_QUEUE} numbers` : 'Upload CSV or TXT — Pro'}
       </button>
 
       <div>
         <label htmlFor="dialer-input" className="block text-xs font-medium text-gray-700">
-          Or paste numbers
+          {pro ? 'Or paste numbers' : `Paste up to ${MAX_QUEUE} numbers`}
         </label>
         <p className="mt-0.5 text-xs text-gray-500">
           One per line — the number can be in any column. Duplicates, invalid lines and DNC numbers are skipped.

@@ -7,7 +7,29 @@ import { supabase } from './supabase';
 import type { CallFile, IndexEntry } from './schemas';
 
 export class DBCallStore {
-  constructor(private userId: string) {}
+  /**
+   * @param maxCalls When set, every read is limited to the user's newest
+   *   `maxCalls` calls (the Free plan's connector window). null = all calls.
+   */
+  constructor(
+    private userId: string,
+    private maxCalls: number | null = null,
+  ) {}
+
+  /** SIDs of the newest `maxCalls` calls, or null when there is no window. */
+  private async windowSids(): Promise<string[] | null> {
+    if (this.maxCalls === null) return null;
+    if (this.maxCalls <= 0) return [];
+    const { data, error } = await supabase
+      .from('calls')
+      .select('call_sid')
+      .eq('user_id', this.userId)
+      .order('started_at', { ascending: false })
+      .limit(this.maxCalls);
+    // Fail closed: an unreadable window shows nothing rather than everything.
+    if (error || !data) return [];
+    return data.map((r) => r.call_sid as string);
+  }
 
   /** Confirm user row exists — used by API routes to authenticate requests. */
   async userExists(): Promise<boolean> {
@@ -26,7 +48,7 @@ export class DBCallStore {
       .select('call_sid, direction, number, started_at, duration_sec, status, has_transcript')
       .eq('user_id', this.userId)
       .order('started_at', { ascending: false })
-      .limit(limit);
+      .limit(this.maxCalls === null ? limit : Math.min(limit, this.maxCalls));
 
     if (error || !data) return [];
 
@@ -43,6 +65,8 @@ export class DBCallStore {
 
   /** Full call record (meta + optional transcript) for one callSid. */
   async readCall(callSid: string): Promise<CallFile | null> {
+    const sids = await this.windowSids();
+    if (sids && !sids.includes(callSid)) return null;
     const { data, error } = await supabase
       .from('calls')
       .select('call_sid, direction, number, started_at, duration_sec, status, contact, transcript')
@@ -56,11 +80,13 @@ export class DBCallStore {
 
   /** All calls with transcripts. Slow — only for search/export. */
   async readAllCalls(): Promise<CallFile[]> {
-    const { data, error } = await supabase
+    let qb = supabase
       .from('calls')
       .select('call_sid, direction, number, started_at, duration_sec, status, contact, transcript')
       .eq('user_id', this.userId)
       .order('started_at', { ascending: false });
+    if (this.maxCalls !== null) qb = qb.limit(Math.max(this.maxCalls, 0));
+    const { data, error } = await qb;
 
     if (error || !data) return [];
     return data.map(rowToCallFile);
@@ -80,6 +106,8 @@ export class DBCallStore {
     if (!q) return [];
 
     const limit = opts.limit ?? 50;
+    const sids = await this.windowSids();
+    if (sids && sids.length === 0) return [];
 
     let qb = supabase
       .from('calls')
@@ -90,6 +118,7 @@ export class DBCallStore {
       .order('started_at', { ascending: false })
       .limit(limit);
 
+    if (sids) qb = qb.in('call_sid', sids);
     if (opts.direction && opts.direction !== 'all') {
       qb = qb.eq('direction', opts.direction);
     }

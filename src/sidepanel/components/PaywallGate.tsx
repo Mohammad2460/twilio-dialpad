@@ -54,13 +54,13 @@ export function PaywallGate({ feature, children }: { feature: Feature; children:
   return (
     <div className="rounded-lg border border-gray-200 bg-brand-50 p-4 shadow-sm">
       <p className="text-sm font-semibold text-gray-900">{BENEFIT[feature]}</p>
-      <p className="mt-1 text-xs text-gray-500">Unlock with Pro — $9/mo, 7-day free trial.</p>
+      <p className="mt-1 text-xs text-gray-500">Included in Pro.</p>
       <button
         type="button"
         onClick={() => setView('pro')}
         className="mt-3 rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700"
       >
-        Start free trial
+        See Pro
       </button>
     </div>
   );

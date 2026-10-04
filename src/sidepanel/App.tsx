@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useCallStore } from './stores/call-store';
 import { useDevice } from './hooks/use-device';
 import { track } from '@shared/telemetry';
@@ -11,15 +11,13 @@ import { AutoDialer } from './components/AutoDialer';
 import { NotConfigured } from './components/NotConfigured';
 import { FolderPermissionBanner } from './components/FolderPermissionBanner';
 import { SettingsTab } from './components/SettingsTab';
-import { ProTab } from './components/ProTab';
+import { PlanTab } from './components/PlanTab';
 import { AiTab } from './components/AiTab';
 import { ClaudeTab } from './components/ClaudeTab';
 import { AI_CHAT_ENABLED, MCP_PROMO_ENABLED } from '@shared/flags';
 import { TrialStartPopup } from './components/TrialStartPopup';
-import { TrialBanner } from './components/TrialBanner';
 import { ReconnectBanner } from './components/ReconnectBanner';
 import { AiNotice } from './components/AiNotice';
-import { getEntitlements, type Entitlements } from '@shared/entitlements';
 
 export function App() {
   useDevice();
@@ -27,36 +25,13 @@ export function App() {
   const activeCall = useCallStore((s) => s.activeCall);
   const view = useCallStore((s) => s.view);
 
-  const [ent, setEnt] = useState<Entitlements | null>(null);
-  const [cloudUserId, setCloudUserId] = useState<string | null>(null);
-
   // Telemetry: the side panel mounting = the user opened the dialpad. Fire once
   // per mount (empty deps) — separates "installed, never opened" from "bailed".
   useEffect(() => {
     track('panel_opened');
   }, []);
 
-  // Resolve entitlements (drives the trial popup + expiry banner) once configured.
-  useEffect(() => {
-    if (!settings) return;
-    let cancelled = false;
-    (async () => {
-      const { cloudUserId: uid } = await chrome.storage.local.get('cloudUserId');
-      const userId = typeof uid === 'string' ? uid : null;
-      const result = await getEntitlements(userId);
-      if (!cancelled) {
-        setCloudUserId(userId);
-        setEnt(result);
-      }
-    })().catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [settings]);
-
   if (!settings) return <NotConfigured />;
-
-  const showTrialBanner = ent?.trialing && ent.daysLeft != null && ent.daysLeft <= 3 && cloudUserId;
 
   return (
     <div className="flex h-full flex-col bg-white">
@@ -65,7 +40,6 @@ export function App() {
       <FolderPermissionBanner />
       <TrialStartPopup />
       {AI_CHAT_ENABLED && <AiNotice />}
-      {showTrialBanner && <TrialBanner userId={cloudUserId} daysLeft={ent.daysLeft!} />}
       <main className="flex-1 overflow-y-auto">
         {activeCall?.phase === 'ringing' && activeCall.direction === 'in' ? (
           <IncomingCall />
@@ -78,7 +52,7 @@ export function App() {
         ) : view === 'settings' ? (
           <SettingsTab />
         ) : view === 'pro' ? (
-          <ProTab />
+          <PlanTab />
         ) : view === 'ai' ? (
           AI_CHAT_ENABLED ? <AiTab /> : MCP_PROMO_ENABLED ? <ClaudeTab /> : <Dialpad />
         ) : (
@@ -109,7 +83,7 @@ function Footer() {
         Recents
       </TabButton>
       <TabButton active={view === 'pro'} onClick={() => setView('pro')}>
-        Pro
+        Plan
       </TabButton>
       <TabButton active={view === 'settings'} onClick={() => setView('settings')}>
         Settings
