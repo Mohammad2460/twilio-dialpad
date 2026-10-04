@@ -185,8 +185,9 @@ class TranscriptionController {
     // is never affected — transcription is fully independent of the WebRTC call.
     try {
       if (managed) {
-        // Managed path (P8.3): our Deepgram key via short-lived JWTs, metered by
-        // credits. Stops gracefully at zero balance; never affects the call.
+        // Managed path (P8.3): our Deepgram key via short-lived JWTs, counted
+        // against the monthly allowance. Stops gracefully at the limit; never
+        // affects the call.
         this.managed = new ManagedTranscription({
           userId: managed.userId,
           callSid,
@@ -197,9 +198,9 @@ class TranscriptionController {
           onStopped: (reason) => {
             console.log('[transcription] managed stopped:', reason);
             if (reason === 'insufficient_credits') {
-              _transcriptErrorCb?.(new Error('Transcription paused — out of credits.'));
+              _transcriptErrorCb?.(new Error('Transcription paused — this month’s minutes are used up. Your call is not affected.'));
             } else if (reason === 'trial_limit') {
-              _transcriptErrorCb?.(new Error('Daily free-trial transcription limit reached — resets within 24h, or upgrade to Pro.'));
+              _transcriptErrorCb?.(new Error('Transcription paused — today’s trial limit is reached. It resumes within 24 hours. Your call is not affected.'));
             } else if (reason === 'unavailable') {
               _transcriptErrorCb?.(new Error('Managed transcription unavailable.'));
             } else if (reason === 'error') {

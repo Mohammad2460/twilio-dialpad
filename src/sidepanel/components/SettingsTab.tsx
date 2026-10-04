@@ -9,6 +9,8 @@ import { listRecordings, deleteRecording, type Recording } from '@shared/recordi
 import { AI_CHAT_ENABLED, BYO_DEEPGRAM_ENABLED } from '@shared/flags';
 import { enableBubble, disableBubble } from '@shared/bubble-perms';
 import { PaywallGate } from './PaywallGate';
+import { fmtDuration, fmtResetDate, isBlocked, isTrial, meterLevel, transcriptionLeft, type PlanState } from '@shared/plan';
+import { usePlan } from '../hooks/use-plan';
 
 const DEEPGRAM_MODELS = [
   ['nova-3', 'Nova-3 — most accurate'],
@@ -55,6 +57,46 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="mb-3 text-[11px] font-semibold uppercase tracking-wide text-gray-500">{title}</h2>
       <div className="space-y-3">{children}</div>
     </section>
+  );
+}
+
+function transcriptionDescription(plan: PlanState | null): string {
+  if (!plan) return 'Live transcripts for every call — no setup.';
+  const perMonth = `${fmtDuration(plan.transcription.limit)} a month`;
+  if (isTrial(plan)) return `Live transcripts for every call — no setup. ${perMonth} during your trial.`;
+  return `Live transcripts for every call — no setup. ${perMonth} on ${plan.plan === 'pro' ? 'Pro' : 'Free'}.`;
+}
+
+/** Under the transcription toggle: silent while there is plenty, then what is left / when it resets. */
+function TranscriptionAllowance({ plan }: { plan: PlanState }) {
+  const setView = useCallStore((s) => s.setView);
+  const level = meterLevel(plan.transcription);
+  if (level === 'ok') return null;
+  const reset = fmtResetDate(plan.resetsAt);
+  const blocked = isBlocked(plan, 'transcription');
+  return (
+    <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+      <p className="leading-relaxed">
+        {level === 'low'
+          ? `${transcriptionLeft(plan.transcription)} this month. Resets ${reset}.`
+          : blocked
+            ? `All ${fmtDuration(plan.transcription.limit)} used this month. Transcription is paused until ${reset} — your calls are not affected.`
+            : `All ${fmtDuration(plan.transcription.limit)} used this month. Transcription continues on your extra balance.`}
+      </p>
+      {plan.plan === 'free' && (
+        <button
+          type="button"
+          onClick={() => setView('pro')}
+          className={
+            level === 'out'
+              ? 'mt-1.5 rounded bg-brand-600 px-2.5 py-1 font-medium text-white hover:bg-brand-700'
+              : 'mt-1 font-medium text-brand-700 hover:underline'
+          }
+        >
+          {level === 'out' ? 'Upgrade to Pro' : `Pro has ${fmtDuration(plan.limits.pro.transcriptionSeconds)} a month`}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -229,28 +271,27 @@ function AISection({
   }
 
   const managedOn = !!settings.managedTranscription;
+  const plan = usePlan();
 
   if (!BYO_DEEPGRAM_ENABLED) {
     return (
       <Section title="Transcription & Claude">
-        <PaywallGate feature="managed_transcription">
-          <Toggle
-            label="Call transcription"
-            description="Live transcripts for every call — included, no setup. Metered by credits."
-            checked={managedOn}
-            onChange={(v) => onUpdate({ managedTranscription: v })}
-          />
-        </PaywallGate>
+        <Toggle
+          label="Call transcription"
+          description={transcriptionDescription(plan)}
+          checked={managedOn}
+          onChange={(v) => onUpdate({ managedTranscription: v })}
+        />
+        {plan && managedOn && <TranscriptionAllowance plan={plan} />}
         {AI_CHAT_ENABLED && (
           <Toggle
             label="Automatic call summaries"
-            description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Counts toward your AI allowance."
+            description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Doesn’t use your AI questions."
             checked={settings.aiAutoSummary !== false}
             onChange={(v) => onUpdate({ aiAutoSummary: v })}
           />
         )}
         {mcpUrl && (
-          <PaywallGate feature="ai_analysis">
           <div className="border-t border-gray-100 pt-3">
             <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
             <p className="mt-0.5 text-xs text-gray-500">
@@ -271,7 +312,6 @@ function AISection({
               </button>
             </div>
           </div>
-          </PaywallGate>
         )}
       </Section>
     );
@@ -279,19 +319,17 @@ function AISection({
 
   return (
     <Section title="AI & Transcription">
-      <PaywallGate feature="managed_transcription">
-        <Toggle
+      <Toggle
           label="Managed transcription"
-          description="Use our transcription — no Deepgram key needed. Metered by AI credits. Off = bring your own key (free)."
+          description="Use our transcription — no Deepgram key needed, counted against your monthly minutes. Off = bring your own key (free)."
           checked={managedOn}
           onChange={(v) => onUpdate({ managedTranscription: v })}
         />
-      </PaywallGate>
 
       {AI_CHAT_ENABLED && (
         <Toggle
           label="Automatic call summaries"
-          description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Counts toward your AI allowance."
+          description="After each transcribed call, AI writes a summary, objections and promises. Sends the transcript text to our AI provider. Doesn’t use your AI questions."
           checked={settings.aiAutoSummary !== false}
           onChange={(v) => onUpdate({ aiAutoSummary: v })}
         />
@@ -337,7 +375,6 @@ function AISection({
       </button>
 
       {mcpUrl && (
-        <PaywallGate feature="ai_analysis">
         <div className="border-t border-gray-100 pt-3">
           <p className="text-xs font-medium text-gray-700">Claude AI connector (MCP)</p>
           <p className="mt-0.5 text-xs text-gray-500">
@@ -358,7 +395,6 @@ function AISection({
             </button>
           </div>
         </div>
-        </PaywallGate>
       )}
     </Section>
   );

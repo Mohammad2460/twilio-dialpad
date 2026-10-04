@@ -18,6 +18,20 @@ export interface PricingConfig {
   caps: { max_input_tokens: number; max_output_tokens: number };
   llm: Record<string, { in: number; out: number; cache_write: number; cache_read: number }>;
   deepgram: Record<string, { per_min: number }>;
+  /** Monthly limits per plan (see plan.ts). Absent on configs that predate them. */
+  plans?: Partial<
+    Record<
+      'free' | 'pro',
+      Partial<{
+        transcribe_seconds: number;
+        ai_questions: number;
+        summaries_per_day: number;
+        connector_calls: number | null;
+      }>
+    >
+  >;
+  /** Product name + price new checkouts use, per billing cycle (see plan.ts). */
+  checkout?: Partial<Record<'monthly' | 'yearly', { name?: string; price_cents?: number }>>;
 }
 
 /** Anthropic Messages API usage shape (the fields that bill). */

@@ -66,7 +66,8 @@ const CallRecordSchema = z.object({
   }).optional(),
 });
 
-const HISTORY_CAP = 20;
+/** Calls kept on the device. What a plan may *see* of them is decided at display time. */
+const HISTORY_CAP = 1000;
 
 export const storage = {
   async getSettings(): Promise<Settings | null> {

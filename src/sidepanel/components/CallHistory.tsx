@@ -5,6 +5,8 @@ import { formatForDisplay } from '@shared/phone';
 import { storage } from '@shared/storage';
 import { CallHistoryDetail } from './CallHistoryDetail';
 import type { CallRecord } from '@shared/types';
+import { FREE_HISTORY_DAYS, isPro } from '@shared/plan';
+import { usePlan } from '../hooks/use-plan';
 
 type BadgeKind = 'outgoing-ok' | 'outgoing-fail' | 'incoming-ok' | 'incoming-missed';
 
@@ -64,13 +66,20 @@ function BadgeIcon({ kind }: { kind: BadgeKind }) {
 }
 
 export function CallHistory() {
-  const history = useCallStore((s) => s.history);
+  const allHistory = useCallStore((s) => s.history);
+  const setView = useCallStore((s) => s.setView);
+  const plan = usePlan();
+  // Free shows the last 30 days. Older calls are kept, just not listed. While
+  // the plan is unknown (offline, first paint) nothing is hidden.
+  const cutoff = plan && !isPro(plan) ? Date.now() - FREE_HISTORY_DAYS * 86_400_000 : 0;
+  const history = cutoff ? allHistory.filter((h) => h.startedAt >= cutoff) : allHistory;
+  const hidden = allHistory.length - history.length;
   const deviceState = useCallStore((s) => s.deviceState);
   const ready = deviceState === 'registered';
   const [detailFor, setDetailFor] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<string | null>(null);
 
-  if (history.length === 0) {
+  if (allHistory.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center px-8 pb-16 text-center">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
@@ -176,6 +185,17 @@ export function CallHistory() {
           );
         })}
       </ul>
+
+      {hidden > 0 && (
+        <button
+          type="button"
+          onClick={() => setView('pro')}
+          className="block w-full border-t border-gray-100 px-4 py-3 text-center text-xs text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+        >
+          {hidden} older call{hidden === 1 ? '' : 's'} — Free shows the last {FREE_HISTORY_DAYS} days.{' '}
+          <span className="font-medium text-brand-700">See all with Pro</span>
+        </button>
+      )}
 
       {detailFor && (
         <CallHistoryDetail callSid={detailFor} onClose={() => setDetailFor(null)} />

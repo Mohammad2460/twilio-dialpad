@@ -5,7 +5,7 @@ import type { Transcript } from '@shared/types';
 import { PromiseRow } from './AiToday';
 
 const FAILURE_COPY: Partial<Record<SummarizeStatus, string>> = {
-  no_credits: 'You’ve used up your AI allowance — top up or go Pro to summarize calls.',
+  no_credits: 'Today’s summary limit is reached. Try again tomorrow.',
   not_signed_in: 'Finish account setup to use AI summaries.',
   failed: 'Couldn’t summarize this call. Try again.',
   skipped: 'Not enough conversation in this call to summarize.',

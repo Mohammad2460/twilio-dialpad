@@ -199,12 +199,14 @@ export async function getSubscription(userId: string): Promise<Subscription | nu
 
 /**
  * Create a Dodo checkout session and return the hosted payment URL.
- * Caller opens the URL in a new tab.
+ * Caller opens the URL in a new tab. `plan` picks the billing cycle; the
+ * backend defaults to monthly when it is left out.
  */
-export async function getCheckoutUrl(userId: string): Promise<string> {
+export async function getCheckoutUrl(userId: string, plan?: 'monthly' | 'yearly'): Promise<string> {
   const res = await fetch(`${BASE_URL}/api/checkout/${userId}`, {
     method: 'POST',
-    headers: { Authorization: await authHeader(userId) },
+    headers: { 'Content-Type': 'application/json', Authorization: await authHeader(userId) },
+    body: JSON.stringify(plan ? { plan } : {}),
   });
   if (!res.ok) {
     let detail = '';

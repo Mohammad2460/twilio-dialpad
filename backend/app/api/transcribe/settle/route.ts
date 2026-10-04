@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { corsHeaders } from '@/lib/cors';
 import { authenticate } from '@/lib/auth';
 import { getActivePricing } from '@/lib/credits';
-import { settleWindow } from '@/lib/transcribe-settle';
+import { settleAnyWindow } from '@/lib/usage';
 
 export const runtime = 'nodejs';
 
@@ -17,9 +17,9 @@ function j(body: unknown, status = 200) {
 /**
  * POST /api/transcribe/settle — settle the FINAL transcription window when the
  * call ends (no next /token call to fold it into). Idempotent via settle's
- * reservation-status check; the reaper backstops a missed call. Device-auth.
- * Body: { requestId, seconds }. The reservation must be the caller's own; the
- * model and the time bounds come from the ledger row (see settleWindow).
+ * status check; the reaper backstops a missed call. Device-auth.
+ * Body: { requestId, seconds }. The window must be the caller's own; the model
+ * and the time bounds come from the backend's own row, never from the client.
  */
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
@@ -31,14 +31,13 @@ export async function POST(req: NextRequest) {
   } catch {
     return j({ error: 'bad_json' }, 400);
   }
-  // Trial windows carry no reservation (transcription is free during trial) → no-op.
+  // Windows minted by older backends for trial users carried no id → no-op.
   if (!body.requestId) return j({ ok: true, skipped: true });
 
   try {
     const pricing = await getActivePricing();
-    const balance = await settleWindow(auth.userId, body.requestId, body.seconds, pricing);
-    if (balance === null) return j({ ok: true, skipped: true });
-    return j({ ok: true, balance });
+    await settleAnyWindow(auth.userId, body.requestId, body.seconds, pricing);
+    return j({ ok: true });
   } catch (e) {
     console.error('[transcribe/settle] failed', e);
     return j({ error: 'settle_failed' }, 500);

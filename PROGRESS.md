@@ -8,11 +8,12 @@ _Last updated: 2026-10-04._
 ## Status
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
 - **AI assistant v1 merged and live-tested (2026-10-04)** — item 1 of the relaunch plan. `package.json` is at **1.4.0**. **Not uploaded to the store** — the owner is holding store uploads.
-- **Next: pricing — Free vs Pro limits + demo tour** (item 2) → … → **2.0 relaunch**.
+- **Free vs Pro limits built (2026-10-04)** — first half of item 2. Not uploaded to the store; see "Free / Pro limits" below for what is still open.
+- **Next: demo tour** (rest of item 2) → activation fixes → … → **2.0 relaunch**.
 
 ## AI assistant v1 (1.4.0)
 Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
-- **Call notes** — after each transcribed call the extension asks the backend (`POST /api/ai/summarize`, `gpt-5-mini`, credit-metered) for a summary, objections, promises and a next step. Stored on the transcript record in IndexedDB (`Transcript.insight`), local only. Backfills up to 5 recent calls when the panel opens. Settings toggle: "Automatic call summaries" (default on), but nothing is sent automatically until the user answers the one-time app-wide notice (`AiNotice`). Each request leaves a marker on the transcript (`Transcript.insightAttempt`) so a call is not requested twice automatically; after an unknown or unusable result only the manual "Summarize" button retries.
+- **Call notes** — after each transcribed call the extension asks the backend (`POST /api/ai/summarize`, `gpt-5-mini`, daily cap per plan) for a summary, objections, promises and a next step. Stored on the transcript record in IndexedDB (`Transcript.insight`), local only. Backfills up to 5 recent calls when the panel opens. Settings toggle: "Automatic call summaries" (default on), but nothing is sent automatically until the user answers the one-time app-wide notice (`AiNotice`). Each request leaves a marker on the transcript (`Transcript.insightAttempt`) so a call is not requested twice automatically; after an unknown or unusable result only the manual "Summarize" button retries.
 - **AI tab** — Today (promises due, missed calls not returned) + open promises (check-off) + chat. Today/promises/brief are computed locally from the notes — no AI call.
 - **Chat** — `POST /api/ai/chat` with `mode: 'calls'`; the extension sends a call digest (`src/shared/ai-context.ts`, ~40k-token budget, newest first). Answers cite `[C#]`, rendered as chips that open the call.
 - **Pre-call brief** — keypad (typed number has history) and incoming-call screen.
@@ -32,9 +33,22 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - [ ] Store listing data-use answers: transcript text is sent to an AI provider to provide the feature; not sold, not used for advertising.
 - [ ] Fresh `pnpm build` from `main` → zip `dist/` → upload. No store zip exists yet.
 
-**Owner decisions still open (do not change without them)**
-- Trial/free credit grant (50) versus real AI cost; whether summaries should be free during the trial.
-- "Credits" wording and balance display — belongs to item 2 (pricing: show hours and questions).
+## Free / Pro limits
+- **Plan** = Pro while the user has an active paid subscription (any Dodo product) or an open trial; otherwise Free. No product-to-plan table. After the 7-day trial the user drops to Free and keeps calling.
+- **Backend counts and stops; the client only displays.** Two monthly counters per user — transcription seconds and AI questions (one question = one, whatever it costs) — reset for everyone on the 1st (UTC). Automatic call summaries are not counted against either; a daily cap per plan bounds them. Rules: `backend/lib/plan.ts`; counters: `backend/lib/usage.ts`; SQL: `scripts/migration-plan-usage.sql`.
+- **Limits and prices live in `pricing_config`** (`plans`, `checkout`), with the same values as code defaults: Free 30 min / 20 questions / connector over the newest 5 calls; Pro 10 h / 500 questions / all calls. Changeable without a store release.
+- **Order of spend:** monthly allowance → balance the user already holds in the credit ledger ("Extra balance", shown in dollars only to users who have some) → 402. At a limit, AI / transcription stops and the call is never touched.
+- **Credit grants stop by config** (`free_grant`, `monthly_grant` = 0 in the new pricing version). The ledger stays for existing balances and now also records the real vendor cost of allowance usage as zero-credit rows.
+- **Checkout:** `POST /api/checkout/[userId]` takes optional `{ plan: 'monthly' | 'yearly' }`; no body = monthly. Products are found by name or created: "Twilio Dialpad Pro Monthly" ($19) and "Twilio Dialpad Pro Yearly" ($180). The existing $9 product, the top-up product and every existing subscription are untouched; $9 subscribers stay on $9 with full Pro. The webhook is unchanged.
+- **Extension:** `GET /api/plan/[userId]` drives the Plan tab (upgrade pitch on top, two meters, reset date), the status-bar chip (hidden until 80% used), and the at-limit messages in chat and on the transcription toggle. No "credits" wording anywhere. Free limits that cost us nothing are enforced in the extension only: 30-day history (older calls stay stored, just hidden), auto-dialer 25 per list and no file import.
+- **Store builds (1.3.0):** a limit still answers `402 insufficient_credits`, which 1.3.0 already handles by stopping transcription without touching the call; lapsed users now get the Free allowance instead of being blocked.
+
+**To finish**
+- [x] DB: `scripts/migration-plan-usage.sql` applied to production (2026-10-04, additive).
+- [ ] DB: `scripts/migration-plan-limits-activate.sql` — run after the backend from this change is deployed.
+- [ ] Owner: open the upgrade checkout once (monthly and yearly) and confirm the product name and price on the Dodo page — this also creates the two products. No payment needed.
+- [ ] Owner decision: call forwarding and HubSpot are in the Pro list of the plan but are not gated yet (they work on Free today).
+- [ ] Top-up button is shown only to a Pro user at a limit ("Add $10 extra balance"); the top-up code is unchanged.
 
 ## Why the product "died" (2026-09-28 audit)
 - The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.
@@ -61,8 +75,8 @@ Owner logs in to their real account via a manually created device row (label `de
 ## Product state
 - Calls: BYO-Twilio. New installs = backend-hosted voice (`/api/voice/token`, `/api/voice/twiml`); ≤1.2.0 installs = legacy per-user Twilio Function (Twilio's Node 22 default applies to any rebuild; deployed Functions keep running).
 - Hidden via `src/shared/flags.ts`: BYO Deepgram. SMS UI removed (backend routes dormant).
-- Live: dialer, history, auto-dialer (CSV, 100 cap), recording, managed transcription, AI assistant (1.4.0, see above), Claude MCP connector (`/api/mcp/[userId]`), Pro $9/mo + 7-day trial via Dodo (new pricing in the plan is not built yet).
-- Managed transcription metering: each window's reservation is created and settled from backend-held state (`backend/lib/transcribe-metering.ts`, `transcribe-settle.ts`); works with 1.3.0/1.4.0 clients unchanged.
+- Live: dialer, history, auto-dialer (CSV, 100 cap), recording, managed transcription, AI assistant (1.4.0, see above), Claude MCP connector (`/api/mcp/[userId]`), Free + Pro ($19/mo or $180/yr) with a 7-day Pro trial via Dodo (see "Free / Pro limits").
+- Managed transcription metering: each window is opened and settled from backend-held state — allowance windows in `transcribe_windows` (`backend/lib/usage.ts`), balance-paid windows in the credit ledger (`transcribe-settle.ts`); works with 1.3.0/1.4.0 clients unchanged.
 - Prod DB: `anon`/`authenticated` roles have no grants (only the backend's service role touches the DB); telemetry views are `security_invoker`.
 
 ## Known follow-ups (not blocking)
@@ -76,6 +90,6 @@ Owner logs in to their real account via a manually created device row (label `de
 - Owner action: fund the Anthropic account before offering Claude models.
 
 ## Working rules
-- **Never touch Dodo or customer-payment code/data.** Owner creates Dodo products/prices.
+- **Never edit, re-price, archive or delete an existing Dodo product, subscription or customer.** New products for new pricing may be added by name (find-or-create).
 - **The repo is public** — keep security specifics and user data out of commits, PRs and docs.
 - Prod DB changes: Claude writes the SQL; the owner runs it in the Supabase SQL editor.
