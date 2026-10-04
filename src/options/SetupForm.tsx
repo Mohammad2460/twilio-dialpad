@@ -102,7 +102,7 @@ export function SetupForm({ initial, onSubmit }: Props) {
             placeholder="From the Twilio Console"
             autoComplete="off"
           />
-          <Hint>Used once to connect your account, then discarded. It is never stored.</Hint>
+          <Hint>Used only during setup to connect your account, then discarded. It is never stored.</Hint>
         </Field>
 
         <Field label="Email" required>
@@ -139,7 +139,7 @@ export function SetupForm({ initial, onSubmit }: Props) {
             className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand-600"
           />
           <span className="text-sm text-gray-700">
-            Also send me product tips and news. <span className="text-gray-500">Optional — unsubscribe any time.</span>
+            Also send me product tips and news. <span className="text-gray-500">Optional.</span>
           </span>
         </label>
 
@@ -291,7 +291,7 @@ function TrustNotes() {
     <ul className="mt-4 space-y-1.5 text-xs leading-relaxed text-gray-600">
       <li>
         <span className="font-medium text-gray-900">Your Auth Token is never stored.</span> It is sent over HTTPS, used
-        once to check the account is yours and connect your number, then discarded.
+        only during setup to check the account is yours and connect your number, then discarded.
       </li>
       <li>
         <span className="font-medium text-gray-900">You stay in control.</span> Setup creates a separate API key in your

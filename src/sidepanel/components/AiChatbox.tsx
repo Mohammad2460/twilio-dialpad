@@ -78,7 +78,6 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
   async function ask(question?: string) {
     const q = (question ?? draft).trim();
     if (!q || !userId || streaming) return;
-    void markOnboarding('askedAi');
     setNotice(null);
     setDraft('');
     const next: ChatTurn[] = [...turns, { role: 'user', content: q }];
@@ -106,6 +105,8 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
         signal: ctrl.signal,
       })) {
         if (ev.type === 'delta') {
+          // Counts as "asked AI" once an answer starts arriving, not on a refused ask.
+          if (!acc) void markOnboarding('askedAi');
           acc += ev.text;
           setTurns((t) => {
             const copy = t.slice();

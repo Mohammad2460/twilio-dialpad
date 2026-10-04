@@ -32,16 +32,24 @@ export function OnboardingChecklist() {
   const [flags, setFlags] = useState<OnboardingFlags | null>(null);
   const [open, setOpen] = useState(false);
 
-  // Re-read when the view changes: the steps are completed on other screens.
+  // Steps are completed on other screens: re-read on view change, and as soon
+  // as a flag is written.
   useEffect(() => {
     let cancelled = false;
-    getOnboarding()
-      .then((f) => {
-        if (!cancelled) setFlags(f);
-      })
-      .catch(() => undefined);
+    const read = () =>
+      getOnboarding()
+        .then((f) => {
+          if (!cancelled) setFlags(f);
+        })
+        .catch(() => undefined);
+    void read();
+    const onChange = (changes: { [k: string]: chrome.storage.StorageChange }, area: string) => {
+      if (area === 'local' && changes.onboarding) void read();
+    };
+    chrome.storage.onChanged.addListener(onChange);
     return () => {
       cancelled = true;
+      chrome.storage.onChanged.removeListener(onChange);
     };
   }, [view]);
 
