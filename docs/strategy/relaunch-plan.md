@@ -20,8 +20,8 @@ _Agreed with the owner on 2026-09-28/29. This is the working plan; build it one 
 
 ## Build order
 1. **AI assistant in the extension (v1)** — built (1.4.0, pending store upload + live test)
-2. **Pricing: Free vs Pro limits in the extension + demo tour** ← NEXT
-3. **Activation fixes** (Twilio setup guide, trust copy, email-first)
+2. **Pricing: Free vs Pro limits in the extension + demo tour** — built (backend live; extension pending store upload)
+3. **Activation fixes** (Twilio setup guide, trust copy, email-first) ← NEXT
 4. **Retention loops**
 5. **Store listing + landing page**, then the 2.0 launch
 

@@ -36,7 +36,10 @@ export type TelemetryEventName =
   | 'autodeploy_failed'
   | 'device_ready'
   | 'first_call_synced'
-  | 'transcript_enabled';
+  | 'transcript_enabled'
+  | 'demo_started'
+  | 'demo_finished'
+  | 'demo_setup_clicked';
 
 type MetaValue = string | number | boolean;
 
