@@ -7,6 +7,8 @@
 export interface DemoLine {
   speaker: 'user' | 'remote';
   text: string;
+  /** A phrase inside `text` that the notes are built from; highlighted when the call ends. */
+  mark?: string;
 }
 
 export const DEMO_CONTACT = { name: 'Dana Whitfield', company: 'Northwind Logistics' };
@@ -14,11 +16,11 @@ export const DEMO_CONTACT = { name: 'Dana Whitfield', company: 'Northwind Logist
 export const DEMO_TRANSCRIPT: DemoLine[] = [
   { speaker: 'user', text: 'Hi Dana, it’s Sam. Did you get a chance to look at the proposal?' },
   { speaker: 'remote', text: 'I did. The per-seat price works for us.' },
-  { speaker: 'remote', text: 'But finance has to sign off, and they want the annual terms in writing.' },
-  { speaker: 'user', text: 'No problem. I’ll send the annual pricing sheet today.' },
+  { speaker: 'remote', text: 'But finance has to sign off, and they want the annual terms in writing.', mark: 'annual terms in writing' },
+  { speaker: 'user', text: 'No problem. I’ll send the annual pricing sheet today.', mark: 'send the annual pricing sheet today' },
   { speaker: 'remote', text: 'Good. If I have it by Thursday I can get approval before the 15th.' },
   { speaker: 'user', text: 'You’ll have it this afternoon. Can I call you Friday to confirm?' },
-  { speaker: 'remote', text: 'Friday works. Call me after ten.' },
+  { speaker: 'remote', text: 'Friday works. Call me after ten.', mark: 'Call me after ten' },
 ];
 
 export interface DemoPromise {
