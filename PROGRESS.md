@@ -72,7 +72,7 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - [x] Store package built, audited (manifest, permissions diff, no secrets/dev URLs/remote code), submitted.
 - [ ] **Privacy policy page** — PR #19 serves it at `https://dialler-mcp.vercel.app/privacy`; must be merged for the store listing link to work.
 - [ ] After approval: install from the store on a clean profile; check setup screen + side panel.
-- [ ] **Owner: run `scripts/migration-credits-settle-hardening.sql`** in the Supabase SQL editor (function-only, idempotent, safe before or after the backend deploy). Ships with the transcription metering change below.
+- [x] `scripts/migration-credits-settle-hardening.sql` applied to the prod DB (2026-10-04); live functions match the file.
 - [ ] Real call test needs a working Twilio account (owner's Twilio account is suspended; a free Twilio trial on another email works).
 
 ## Owner dev access (no Twilio needed)
@@ -98,4 +98,4 @@ Owner logs in to their real account via a manually created device row (label `de
 ## Working rules
 - **Never edit, re-price, archive or delete an existing Dodo product, subscription or customer.** New products for new pricing may be added by name (find-or-create).
 - **The repo is public** — keep security specifics and user data out of commits, PRs and docs.
-- Prod DB changes: Claude writes the SQL; the owner runs it in the Supabase SQL editor.
+- Prod DB changes: Claude may apply SQL to the prod Supabase project itself (owner approved 2026-10-04), carefully and double-checked: write it as a migration file in `scripts/` first, read the live definitions and compare before changing anything, test on a local Postgres where possible, apply, then verify the result. Schema/function changes only — never payment tables or customer data.
