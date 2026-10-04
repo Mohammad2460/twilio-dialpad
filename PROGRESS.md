@@ -65,7 +65,7 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 **Not built — needs the owner**
 - [ ] **Email before credentials** ("send me the setup guide"). No email provider is configured in production, so nothing can be sent yet. Needs: a sending provider + domain, the guide email itself, and policy text for collecting an address before an account exists.
 - [ ] **60-second setup video** for the guide.
-- [ ] **Unsubscribe path.** The opt-in says "unsubscribe any time"; nothing clears `marketing_consent_at` yet. Must exist (link in every marketing email) before the first marketing email is sent.
+- [ ] **Unsubscribe path.** Nothing clears `marketing_consent_at` yet. Must exist (link in every marketing email) before the first marketing email is sent.
 - [ ] **Privacy policy is behind the product** (`docs/PRIVACY_POLICY.md` and the gist): it still says the API key secret is never stored (it is kept encrypted for backend voice), that email comes only from checkout (setup asks for it), that history is the last 20 calls, and that cloud sync needs a subscription (Free syncs now). Must be corrected before a store upload.
 - [ ] Transcription is still off until the user turns it on. Turning it on by default is a consent decision for the owner.
 
