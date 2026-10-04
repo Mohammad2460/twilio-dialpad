@@ -16,6 +16,9 @@ export const EVENT_NAMES = [
   'device_ready',
   'first_call_synced',
   'transcript_enabled',
+  'demo_started',
+  'demo_finished',
+  'demo_setup_clicked',
 ] as const;
 
 export const EventNameSchema = z.enum(EVENT_NAMES);
@@ -44,7 +47,7 @@ export type TrackBatch = z.infer<typeof TrackBatchSchema>;
 // key — including a future one that accidentally carries PII — is dropped. This
 // is the safe default: new keys are excluded until explicitly added here.
 const ALLOWED_META_KEYS = new Set([
-  'step',          // autodeploy_failed: which step
+  'step',          // autodeploy_failed: which step; demo_setup_clicked: which demo step
   'reason',        // autodeploy_failed: coarse error (already truncated client-side)
   'reconfigure',   // twilio_creds_submitted: re-run vs first setup
   'hasTranscript', // first_call_synced: true/false

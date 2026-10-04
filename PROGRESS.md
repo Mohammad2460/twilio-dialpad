@@ -8,8 +8,8 @@ _Last updated: 2026-10-04._
 ## Status
 - **v1.3.0 submitted to the Chrome Web Store (2026-09-29)** — quiet fix release, no marketing. Built from `main` @ `881fa9e`.
 - **AI assistant v1 merged and live-tested (2026-10-04)** — item 1 of the relaunch plan. `package.json` is at **1.4.0**. **Not uploaded to the store** — the owner is holding store uploads.
-- **Free vs Pro limits built (2026-10-04)** — first half of item 2. Not uploaded to the store; see "Free / Pro limits" below for what is still open.
-- **Next: demo tour** (rest of item 2) → activation fixes → … → **2.0 relaunch**.
+- **Free vs Pro limits live on the backend (2026-10-04)** and **demo tour built** — item 2 of the relaunch plan is done in code. Not uploaded to the store.
+- **Next: activation fixes** (item 3: Twilio setup guide, trust copy, email-first) → … → **2.0 relaunch**.
 
 ## AI assistant v1 (1.4.0)
 Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
@@ -45,10 +45,16 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 
 **To finish**
 - [x] DB: `scripts/migration-plan-usage.sql` applied to production (2026-10-04, additive).
-- [ ] DB: `scripts/migration-plan-limits-activate.sql` — run after the backend from this change is deployed.
-- [ ] Owner: open the upgrade checkout once (monthly and yearly) and confirm the product name and price on the Dodo page — this also creates the two products. No payment needed.
+- [x] DB: `scripts/migration-plan-limits-activate.sql` applied to production (2026-10-04); pricing version 2 is active.
+- [x] Dodo: "Twilio Dialpad Pro Monthly" ($19) and "Twilio Dialpad Pro Yearly" ($180) exist in the live account.
+- [ ] Owner: open the upgrade checkout once per cycle from the new build and confirm name and price on the Dodo page. No payment needed.
 - [ ] Owner decision: call forwarding and HubSpot are in the Pro list of the plan but are not gated yet (they work on Free today).
 - [ ] Top-up button is shown only to a Pro user at a limit ("Add $10 extra balance"); the top-up code is unchanged.
+
+## Demo tour
+- Before any Twilio details are asked for, the side panel opens on a welcome screen whose main button plays a 30-second demo (`NotConfigured.tsx` → `DemoTour.tsx`): a sample call with a live transcript, the notes it produces, then questions about it with written-out sample answers. Setup is one tap away at every step.
+- Sample data only (`src/shared/demo-data.ts`): no account, no backend call, nothing stored.
+- Telemetry: `demo_started`, `demo_finished`, `demo_setup_clicked` (with the step it was clicked from) — compare against `wizard_started` to see whether the demo moves people into setup.
 
 ## Why the product "died" (2026-09-28 audit)
 - The store build was v1.2.0 (2026-06-06), built before device auth; `package.json` was never bumped, so later `main` work never reached users.
