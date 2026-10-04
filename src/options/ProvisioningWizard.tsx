@@ -13,6 +13,8 @@ export interface SetupInput {
   numberSid: string;
   name: string;
   email: string;
+  /** Explicit opt-in to marketing email. Off unless the user ticks it. */
+  marketingConsent: boolean;
 }
 
 interface Props {
@@ -45,6 +47,7 @@ export function ProvisioningWizard({ initial, onDone }: Props) {
         callerId: inp.callerId,
         name: inp.name,
         email: inp.email,
+        marketingConsent: inp.marketingConsent,
         provision: true,
       });
       track('autodeploy_succeeded');

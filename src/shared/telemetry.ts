@@ -39,7 +39,8 @@ export type TelemetryEventName =
   | 'transcript_enabled'
   | 'demo_started'
   | 'demo_finished'
-  | 'demo_setup_clicked';
+  | 'demo_setup_clicked'
+  | 'twilio_guide_opened';
 
 type MetaValue = string | number | boolean;
 

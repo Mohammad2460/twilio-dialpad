@@ -3,6 +3,7 @@ import { ensureCloudAccount } from '@shared/cloud';
 import { streamChat, AI_MODEL, type ChatTurn } from '@shared/credits';
 import { isBlocked, limitMessage, meterLevel, questionsLeft } from '@shared/plan';
 import { reloadPlan, usePlan } from '../hooks/use-plan';
+import { markOnboarding } from '@shared/onboarding';
 import { splitCitations, type CallDigest, type CallRef } from '@shared/ai-context';
 import { formatForDisplay } from '@shared/phone';
 import { useCallStore } from '../stores/call-store';
@@ -77,6 +78,7 @@ export function AiChatbox({ transcript, loadContext, suggestions, onOpenCall }: 
   async function ask(question?: string) {
     const q = (question ?? draft).trim();
     if (!q || !userId || streaming) return;
+    void markOnboarding('askedAi');
     setNotice(null);
     setDraft('');
     const next: ChatTurn[] = [...turns, { role: 'user', content: q }];
