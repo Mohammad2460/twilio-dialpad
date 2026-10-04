@@ -245,7 +245,7 @@ function TwilioGuide() {
         <div className="mt-4 space-y-1 rounded-md bg-gray-50 px-3 py-2 text-xs leading-relaxed text-gray-600">
           <p>
             <span className="font-medium text-gray-900">What it costs:</span> Twilio bills you directly — about $1.15 a
-            month for a US number and about 1.4¢ a minute for US calls. We charge nothing per call.{' '}
+            month for a US number and roughly 1–2¢ a minute for US calls. We charge nothing per call.{' '}
             <Ext href="https://www.twilio.com/en-us/voice/pricing/us">Twilio pricing</Ext>
           </p>
           <p>

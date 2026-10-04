@@ -116,6 +116,7 @@ export function OnboardingChecklist() {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className={`block text-xs font-medium ${done ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                      {done && <span className="sr-only">Done: </span>}
                       {STEP[step].label}
                     </span>
                     {!done && <span className="block text-[11px] text-gray-500">{STEP[step].hint}</span>}
@@ -124,7 +125,7 @@ export function OnboardingChecklist() {
               </li>
             ))}
           </ul>
-          <button type="button" onClick={dismiss} className="mt-1 px-1 text-[11px] text-gray-400 hover:text-gray-600">
+          <button type="button" onClick={dismiss} className="mt-1 px-1 text-[11px] text-gray-500 hover:text-gray-700">
             Hide this list
           </button>
         </div>
