@@ -43,7 +43,8 @@ Spec: `docs/superpowers/specs/2026-10-04-ai-assistant-v1-design.md`.
 - **Store builds (1.3.0):** a limit still answers `402 insufficient_credits`, which 1.3.0 already handles by stopping transcription without touching the call; lapsed users now get the Free allowance instead of being blocked.
 
 **To finish**
-- [ ] DB: `scripts/migration-plan-usage.sql` before the backend deploys; `scripts/migration-plan-limits-activate.sql` after.
+- [x] DB: `scripts/migration-plan-usage.sql` applied to production (2026-10-04, additive).
+- [ ] DB: `scripts/migration-plan-limits-activate.sql` — run after the backend from this change is deployed.
 - [ ] Owner: open the upgrade checkout once (monthly and yearly) and confirm the product name and price on the Dodo page — this also creates the two products. No payment needed.
 - [ ] Owner decision: call forwarding and HubSpot are in the Pro list of the plan but are not gated yet (they work on Free today).
 - [ ] Top-up button is shown only to a Pro user at a limit ("Add $10 extra balance"); the top-up code is unchanged.
