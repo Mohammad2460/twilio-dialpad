@@ -7,7 +7,7 @@ import {
 import { useCallStore } from '../stores/call-store';
 import { storage } from '@shared/storage';
 import { findContactByPhone } from '@shared/hubspot';
-import { getPlanSnapshot, isPro } from '@shared/plan';
+import { getPlanSnapshot, isPro, loadCachedPlan } from '@shared/plan';
 import { transcripts, buildTranscript, prefs } from '@shared/transcripts';
 import { ensureCloudAccount, syncCallToCloud } from '@shared/cloud';
 import { track } from '@shared/telemetry';
@@ -388,7 +388,9 @@ async function enrichWithHubSpot(remoteNumber: string): Promise<void> {
   const settings = useCallStore.getState().settings;
   if (!settings?.hubspotToken || !settings.hubspotPortalId) return;
   // HubSpot contact pop is a Pro feature (the backend also refuses to store the
-  // snapshot on Free). Unknown plan = no lookup.
+  // snapshot on Free). Unknown plan = no lookup. A call can ring before the
+  // plan has loaded, so fall back to the last plan saved on this device.
+  if (!getPlanSnapshot()) await loadCachedPlan();
   if (!isPro(getPlanSnapshot())) return;
 
   const contact = await findContactByPhone(settings.hubspotToken, settings.hubspotPortalId, remoteNumber);

@@ -55,7 +55,8 @@ export async function POST(
   if (!plan) {
     return NextResponse.json({ error: 'User not found' }, { status: 404, headers: corsHeaders });
   }
-  const store = new DBCallStore(userId, plan.limits.connector_calls);
+  const hubspot = hubspotAllowed(plan.plan);
+  const store = new DBCallStore(userId, plan.limits.connector_calls, hubspot);
 
   let body: Record<string, unknown>;
   try {
@@ -76,7 +77,7 @@ export async function POST(
     );
   }
 
-  const tools = buildMcpTools(store, { hubspot: hubspotAllowed(plan.plan) });
+  const tools = buildMcpTools(store, { hubspot });
 
   switch (method) {
     // ── lifecycle ──────────────────────────────────────────────────
