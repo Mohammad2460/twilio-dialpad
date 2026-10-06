@@ -10,11 +10,20 @@ export class DBCallStore {
   /**
    * @param maxCalls When set, every read is limited to the user's newest
    *   `maxCalls` calls (the Free plan's connector window). null = all calls.
+   * @param withContact false leaves the HubSpot contact snapshot out of every
+   *   read (Free plan): snapshots stored while the user was on Pro stay hidden.
    */
   constructor(
     private userId: string,
     private maxCalls: number | null = null,
+    private withContact = true,
   ) {}
+
+  private toCallFile = (row: unknown): CallFile => {
+    const call = rowToCallFile(row);
+    if (!this.withContact) delete call.meta.contact;
+    return call;
+  };
 
   /** SIDs of the newest `maxCalls` calls, or null when there is no window. */
   private async windowSids(): Promise<string[] | null> {
@@ -75,7 +84,7 @@ export class DBCallStore {
       .maybeSingle();
 
     if (error || !data) return null;
-    return rowToCallFile(data);
+    return this.toCallFile(data);
   }
 
   /** All calls with transcripts. Slow — only for search/export. */
@@ -89,7 +98,7 @@ export class DBCallStore {
     const { data, error } = await qb;
 
     if (error || !data) return [];
-    return data.map(rowToCallFile);
+    return data.map(this.toCallFile);
   }
 
   /** Case-insensitive full-text search across transcript segments. */
@@ -135,7 +144,7 @@ export class DBCallStore {
     const results: Array<{ call: CallFile; matches: Array<{ ts: number; speaker: string; text: string }> }> = [];
 
     for (const row of data) {
-      const call = rowToCallFile(row);
+      const call = this.toCallFile(row);
       const segs = call.transcript?.segments ?? [];
       const matches = segs
         .filter((s) => s.text.toLowerCase().includes(q))

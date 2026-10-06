@@ -55,7 +55,8 @@ function bool(v: unknown, fallback = false): boolean {
 
 // ── tool factory ─────────────────────────────────────────────────
 
-export function buildMcpTools(store: DBCallStore): McpTool[] {
+export function buildMcpTools(store: DBCallStore, opts: { hubspot?: boolean } = {}): McpTool[] {
+  const hubspot = opts.hubspot !== false;
   return [
 
     // 1. list_recent_calls
@@ -263,6 +264,12 @@ export function buildMcpTools(store: DBCallStore): McpTool[] {
         const hubspotContactId = str(args.hubspotContactId);
         const includeTranscripts = bool(args.includeTranscripts);
 
+        if (hubspotContactId && !hubspot) {
+          return {
+            content: [{ type: 'text', text: 'Looking up calls by HubSpot contact is part of Pro. Use a phone number instead.' }],
+            isError: true,
+          };
+        }
         if (!phone && !hubspotContactId) {
           return { content: [{ type: 'text', text: 'Provide either phone or hubspotContactId.' }], isError: true };
         }

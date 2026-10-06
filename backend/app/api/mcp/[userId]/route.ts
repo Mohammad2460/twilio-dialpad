@@ -14,6 +14,7 @@ import { DBCallStore } from '@/lib/db-store';
 import { buildMcpTools } from '@/lib/mcp-tools';
 import { getActivePricing } from '@/lib/credits';
 import { getUserPlan } from '@/lib/usage';
+import { hubspotAllowed } from '@/lib/plan';
 
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SERVER_INFO = { name: 'twilio-dialer', version: '1.0.0' };
@@ -54,7 +55,8 @@ export async function POST(
   if (!plan) {
     return NextResponse.json({ error: 'User not found' }, { status: 404, headers: corsHeaders });
   }
-  const store = new DBCallStore(userId, plan.limits.connector_calls);
+  const hubspot = hubspotAllowed(plan.plan);
+  const store = new DBCallStore(userId, plan.limits.connector_calls, hubspot);
 
   let body: Record<string, unknown>;
   try {
@@ -75,7 +77,7 @@ export async function POST(
     );
   }
 
-  const tools = buildMcpTools(store);
+  const tools = buildMcpTools(store, { hubspot });
 
   switch (method) {
     // ── lifecycle ──────────────────────────────────────────────────

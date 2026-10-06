@@ -357,6 +357,7 @@ function Compare({ plan }: { plan: PlanState }) {
     ['Auto-dialer', `${FREE_AUTODIAL_MAX} per list`, `${PRO_AUTODIAL_MAX} + CSV import`],
     ['Claude connector', `Last ${FREE_CONNECTOR_CALLS} calls`, 'All calls'],
     ['Call recording', '—', 'Included'],
+    ['HubSpot contact pop', '—', 'Included'],
   ];
   return (
     <section className="overflow-hidden rounded-lg border border-gray-200 bg-white">

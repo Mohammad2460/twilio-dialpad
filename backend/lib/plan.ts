@@ -109,6 +109,11 @@ export function resolvePlan(row: SubscriptionRow, nowMs: number): PlanInfo {
   };
 }
 
+/** HubSpot contact data (lookup results synced with calls, connector filter) is a Pro feature. */
+export function hubspotAllowed(plan: PlanName): boolean {
+  return plan === 'pro';
+}
+
 // ── Periods (UTC) ─────────────────────────────────────────────────────────────
 // Everyone resets on the 1st of the month, whatever their billing date — which
 // also covers yearly subscribers, who only renew once a year.

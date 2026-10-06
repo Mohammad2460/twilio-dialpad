@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkoutProduct,
   dayPeriod,
+  hubspotAllowed,
   DEFAULT_CHECKOUT,
   DEFAULT_LIMITS,
   limitBody,
@@ -149,5 +150,12 @@ describe('limitBody', () => {
 
   it('the daily summary cap carries no monthly reset date', () => {
     expect(limitBody('summaries', 'pro', 100, NOW).resetsAt).toBeUndefined();
+  });
+});
+
+describe('HubSpot', () => {
+  it('is Pro-only (trial counts as Pro through resolvePlan)', () => {
+    expect(hubspotAllowed('pro')).toBe(true);
+    expect(hubspotAllowed('free')).toBe(false);
   });
 });
